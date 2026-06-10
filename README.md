@@ -5,13 +5,14 @@
 ## 快速开始
 
 ```bash
-cp config.example.yaml config.yaml
 cp .env.example .env
 npm install
 npm run dev
 ```
 
 把 `.env` 里的 `DEEPSEEK_API_KEY` 改成你的真实 DeepSeek Key。`LOCAL_PROXY_API_KEY` 是本地代理密码，自己定一个即可。
+
+默认情况下不需要 `config.yaml`。服务会使用内置配置，把 `claude-sonnet*`、`claude-opus*`、`claude-haiku*` 都路由到 `deepseek-v4-pro`。
 
 Claude Code 侧配置：
 
@@ -29,7 +30,16 @@ export ANTHROPIC_API_KEY="local-secret"
 
 ## 配置原则
 
-- `config.yaml` 只放路由和环境变量名称，不直接保存密钥。
+- `.env` 放密钥和本地变量，已经被 `.gitignore` 忽略。
+- `config.yaml` 是高级可选配置，只放路由和环境变量名称，不直接保存密钥。
 - `routes` 支持 `exact` 和 `prefix`，`exact` 优先于 `prefix`，更长的 `prefix` 优先。
 - 只有显式配置了 `fallback` 的路由才会在上游失败时切换，不自动兜底到 flash。
 - 不支持的 Anthropic 内容块会返回清晰错误，不做字符串拼接兜底。
+
+如果要自定义路由：
+
+```bash
+cp config.example.yaml config.yaml
+```
+
+然后按注释修改 `config.yaml`。

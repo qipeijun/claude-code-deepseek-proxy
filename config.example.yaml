@@ -1,25 +1,40 @@
+# 这是高级配置示例。
+# 日常使用可以不创建 config.yaml：服务会自动使用内置默认配置。
+# 你只需要复制 .env.example 为 .env，并填写 DEEPSEEK_API_KEY。
+#
+# 什么时候需要这个文件？
+# - 想修改监听端口
+# - 想把某些 Claude 模型名映射到其他上游模型
+# - 想增加备用映射服务 fallback
+
 server:
+  # 本地监听地址。建议保持 127.0.0.1，只允许本机访问。
   host: 127.0.0.1
+
+  # 本地代理端口。Claude Code 的 ANTHROPIC_BASE_URL 要指向这个端口。
   port: 8787
+
+  # 本地代理鉴权环境变量名。
+  # 实际值写在 .env 的 LOCAL_PROXY_API_KEY。
   authTokenEnv: LOCAL_PROXY_API_KEY
 
 providers:
   deepseek:
+    # 目前只支持 Anthropic Messages API 兼容上游。
     type: anthropic
+
+    # DeepSeek 官方 Anthropic 兼容入口。
     baseUrl: https://api.deepseek.com/anthropic
+
+    # DeepSeek API Key 的环境变量名。
+    # 实际 key 写在 .env 的 DEEPSEEK_API_KEY。
     apiKeyEnv: DEEPSEEK_API_KEY
+
+    # 上游请求超时时间，单位毫秒。
     timeoutMs: 120000
-    capabilities:
-      contentBlocks:
-        - text
-        - tool_use
-        - tool_result
-        - thinking
-  mapper:
-    type: anthropic
-    baseUrlEnv: MAPPER_BASE_URL
-    apiKeyEnv: MAPPER_API_KEY
-    timeoutMs: 120000
+
+    # 声明这个上游支持的 Anthropic 内容块。
+    # 没列出来的内容块会直接报清晰错误，不做字符串拼接兜底。
     capabilities:
       contentBlocks:
         - text
@@ -27,20 +42,43 @@ providers:
         - tool_result
         - thinking
 
+  # 可选：备用 Anthropic 兼容映射服务。
+  # 如果你暂时不用备用服务，就保持整段注释状态。
+  #
+  # mapper:
+  #   type: anthropic
+  #   baseUrlEnv: MAPPER_BASE_URL
+  #   apiKeyEnv: MAPPER_API_KEY
+  #   timeoutMs: 120000
+  #   capabilities:
+  #     contentBlocks:
+  #       - text
+  #       - tool_use
+  #       - tool_result
+  #       - thinking
+
 routes:
+  # Claude Code 主 agent 和子 agent 常用 sonnet 名称。
+  # 这里强制转成 deepseek-v4-pro，避免 DeepSeek 官方默认映射到 flash。
   - match:
       prefix: claude-sonnet
     provider: deepseek
     upstreamModel: deepseek-v4-pro
-    fallback:
-      - provider: mapper
-        upstreamModel: claude-sonnet-4-6
+    # 可选 fallback：只有你启用了上面的 mapper provider，并填了 .env 里的
+    # MAPPER_BASE_URL / MAPPER_API_KEY，才取消下面注释。
+    #
+    # fallback:
+    #   - provider: mapper
+    #     upstreamModel: claude-sonnet-4-6
 
+  # opus 也走 deepseek-v4-pro。
   - match:
       prefix: claude-opus
     provider: deepseek
     upstreamModel: deepseek-v4-pro
 
+  # haiku 默认也走 deepseek-v4-pro。
+  # 如果你想省成本，可以手动改成 deepseek-v4-flash。
   - match:
       prefix: claude-haiku
     provider: deepseek

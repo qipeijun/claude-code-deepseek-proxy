@@ -1,18 +1,27 @@
 import { readFile } from "node:fs/promises";
 import { parse } from "yaml";
+import { defaultConfig } from "./defaultConfig.js";
 import { ProxyError } from "./errors.js";
 import { appConfigSchema, type AppConfig, type ResolvedProvider } from "./types.js";
 
-export async function loadConfig(path = process.env.PROXY_CONFIG ?? "config.yaml"): Promise<AppConfig> {
+const defaultConfigPath = "config.yaml";
+
+export async function loadConfig(path?: string): Promise<AppConfig> {
+  const resolvedPath = path ?? process.env.PROXY_CONFIG ?? defaultConfigPath;
+  const canUseBuiltInDefault = !path && !process.env.PROXY_CONFIG && resolvedPath === defaultConfigPath;
   let raw: string;
 
   try {
-    raw = await readFile(path, "utf8");
+    raw = await readFile(resolvedPath, "utf8");
   } catch (error) {
+    if (canUseBuiltInDefault && isFileNotFound(error)) {
+      return defaultConfig;
+    }
+
     throw new ProxyError(
       500,
       "api_error",
-      `Cannot read config file at ${path}: ${error instanceof Error ? error.message : String(error)}`
+      `Cannot read config file at ${resolvedPath}: ${error instanceof Error ? error.message : String(error)}`
     );
   }
 
@@ -72,4 +81,8 @@ function assertProviderExists(config: AppConfig, providerName: string): void {
 
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
+}
+
+function isFileNotFound(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }

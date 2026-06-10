@@ -7,7 +7,7 @@
 │  Claude Code │────▶│  本代理 :8787    │────▶│ DeepSeek Anthropic │
 └──────────────┘     └──────────────────┘     └───────────────────┘
                             │  管理后台 /admin
-                            │  方案切换 · 路由配置 · 实时指标
+                            │  方案切换 · 路由配置 · 实时指标 · 版本历史
 ```
 
 ## 为什么需要
@@ -28,7 +28,21 @@ npm install
 npm start
 ```
 
-启动后打开 `http://127.0.0.1:8787/admin` 完成配置（上游地址、API Key、模型路由），保存激活后重启。
+启动后打开 `http://127.0.0.1:8787/admin` 完成配置（上游地址、API Key、模型路由），保存即生效。
+
+一键启动脚本（自动环境检查 + 可选端口释放）：
+
+```bash
+./start.sh              # macOS / Linux 前台启动
+./start.sh --dev        # 开发模式（文件变更自动重启）
+./start.sh --kill-port  # 启动前释放被占用的 8787 端口
+./start.sh --bg         # 后台运行，日志写入 logs/proxy.log
+
+# Windows
+start.bat --dev
+start.bat --kill-port
+powershell -File start.ps1 --Dev --KillPort
+```
 
 Claude Code 客户端设置：
 
@@ -45,11 +59,43 @@ export ANTHROPIC_API_KEY="你在 admin 中设置的鉴权密码"   # 未设鉴�
 - **模型名映射** — 请求侧映射为上游模型名，响应侧（JSON + SSE 流）映射回原始模型名。SSE 流映射做了事件边界缓冲。
 - **模型路由** — 支持 `exact` 精确匹配和 `prefix` 前缀匹配。exact 优先于 prefix，多个 prefix 命中取最长前缀。
 - **Fallback 容灾** — 只有显式配置了 `fallback` 的路由才会切换。触发条件：5xx / 429 / 请求异常。不做静默降级或自动兜底。
-- **内容块校验** — 发出前检查 `system` 和 `messages[].content` 的 type 是否在上游能力范围内，不支持的类型直接报错。
+- **内容块过滤** — 发出前检查 `system` 和 `messages[].content` 的 type 是否在上游能力范围内，不支持的类型过滤并从对话中移除（注入提示文本），不中断对话。
 - **连接池管理** — 按上游 origin 缓存 undici Agent，复用 TCP + TLS 连接，槽位控制并发（默认 32）。
+- **热重载** — 在 admin 中保存配置方案后立即生效，无需重启服务。也支持手动调用 `/api/admin/reload`。
 - **实时指标** — 内存环形缓冲区存储最近 200 条请求，admin 仪表盘展示延迟分布、吞吐量、连接池使用率。
 - **可视化配置管理** — `http://127.0.0.1:8787/admin` 提供三步配置向导（上游连接 → 模型路由 → 高级设置），支持多套方案一键切换。
+- **版本历史** — 每次保存自动记录方案快照，可预览历史版本 JSON 或一键回滚。
 - **认证** — 支持 `Authorization: Bearer` 和 `x-api-key`，在 admin 中填写或通过 `authTokenEnv` 引用环境变量。`/healthz` 和管理 API 跳过认证。
+
+## 架构概览
+
+```
+src/
+├── index.ts                   入口 — 加载配置 → 构建服务器 → 监听端口
+├── server.ts                  Fastify 服务器 — 路由注册、认证、代理+fallback 编排
+├── killPort.ts                释放被占用端口（lsof + kill -9）
+├── types.ts                   Zod schema 定义 + TypeScript 类型导出
+├── errors.ts                  ProxyError 类 + Anthropic 格式错误响应
+├── util.ts                    工具函数
+├── config/
+│   ├── config.ts              Provider 解析（环境变量读取 + baseUrl/apiKey 解析）
+│   ├── defaultConfig.ts       内置默认配置 — 空 providers/routes，引导到 admin 页面配置
+│   ├── liveConfig.ts          运行时配置管理 — 热重载、模块级可变引用
+│   └── store.ts               配置持久化 — JSON 文件读写 + 版本历史 + 写锁
+├── proxy/
+│   ├── router.ts              模型路由匹配 — exact > prefix > 最长 prefix 优先
+│   ├── http.ts                上游 HTTP 调用 — undici Agent 连接池复用
+│   ├── modelRewrite.ts        模型名映射 — 请求替换 upstreamModel，响应还原 externalModel（含 SSE 流）
+│   ├── contentBlocks.ts       内容块校验 — 不支持的类型过滤 + 提示注入
+│   ├── requestNormalize.ts    请求规范化 — 清洗 Claude Code 子代理的矛盾字段
+│   └── metrics.ts             实时指标 — 环形缓冲区 + 延迟/吞吐量统计
+└── admin/
+    ├── admin.html              管理后台落地页
+    ├── adminRoutes.ts          Admin API — 方案 CRUD + 上游模型查询 + 热重载 + 版本回滚
+    ├── adminStatic.ts          管理页面 HTML 静态服务
+    ├── style.css               管理后台样式
+    └── js/                     管理后台前端逻辑
+```
 
 ## API 端点
 
@@ -63,8 +109,12 @@ export ANTHROPIC_API_KEY="你在 admin 中设置的鉴权密码"   # 未设鉴�
 | `/api/admin/profiles` | GET / POST | 列出 / 创建配置方案 |
 | `/api/admin/profiles/:id` | PUT / DELETE | 更新 / 删除方案 |
 | `/api/admin/profiles/activate` | POST | 激活方案 |
+| `/api/admin/profiles/:id/history` | GET | 方案版本历史 |
+| `/api/admin/profiles/:id/rollback` | POST | 回滚到历史版本 |
 | `/api/admin/upstream-models` | POST | 查询上游可用模型 |
 | `/api/admin/metrics` | GET | 实时性能指标 |
+| `/api/admin/reload` | POST | 热重载配置（无需重启） |
+| `/api/admin/kill-port` | POST | 释放当前端口（配合 watch 模式自动重启） |
 
 ## 通过 New API 网关中转
 
@@ -84,9 +134,20 @@ Claude Code → 本代理 :8787 → New API :3000 → DeepSeek Anthropic
 
 [ccswitch-deepseek](https://github.com/qipeijun/ccswitch-deepseek) 是面向 Codex CLI 的另一中转代理，做 OpenAI Responses API → DeepSeek Chat Completions 协议翻译，监听 `11435` 端口。两者独立运行、互不影响，共享同一 DeepSeek Key。
 
+## 端口被占用？
+
+启动时如果 8787 端口被占用：
+
+```bash
+npm start -- --kill-port      # 启动前自动释放端口
+./start.sh --kill-port        # 一键脚本同等支持
+```
+
+admin 页面右上角也有「重启」按钮，会先关闭服务器、释放端口再退出，配合 `npm run dev`（tsx watch）可自动重启。
+
 ## 环境变量
 
-代理自身读取的硬编码变量：
+代理自身读取的变量：
 
 | 变量 | 说明 | 默认值 |
 |------|------|--------|

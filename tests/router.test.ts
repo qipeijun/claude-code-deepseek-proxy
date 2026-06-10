@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from "vitest";
-import { matchRoute } from "../src/router.js";
+import { matchRoute } from "../src/proxy/router.js";
 import { makeConfig } from "./helpers.js";
 
 describe("model routing", () => {

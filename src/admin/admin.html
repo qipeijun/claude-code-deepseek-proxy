@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Claude Code DeepSeek Proxy — 管理后台</title>
+<link rel="stylesheet" href="/admin/style.css">
+</head>
+<body>
+
+<div class="app">
+  <!-- ═══ Top Bar ═══ -->
+  <nav class="topbar">
+    <div class="topbar-left">
+      <div class="logo">
+        <div class="logo-mark">λ</div>
+        DeepSeek Proxy
+      </div>
+      <div class="tabs">
+        <button class="tab-btn on" data-tab="dashboard">仪表盘</button>
+        <button class="tab-btn" data-tab="config">配置管理</button>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <span class="server-name" id="topServerAddr">127.0.0.1:8787</span>
+      <span class="port-badge"><span class="live-dot"></span>ACTIVE</span>
+      <button class="btn ghost sm" id="restartBtn" title="强制释放端口并重启 (watch 模式生效)">重启</button>
+    </div>
+  </nav>
+
+  <!-- ═══ Main ═══ -->
+  <div class="main-area">
+
+    <!-- ─── Dashboard ─── -->
+    <main class="view" id="dashboardView">
+      <div class="view-content">
+
+        <!-- [1] 服务状态栏 -->
+        <div class="status-banner" id="dashBanner">
+          <div class="status-left">
+            <span class="status-pulse" id="dashStatusDot"></span>
+            <span class="status-label" id="dashStatusLabel">加载中…</span>
+          </div>
+          <div class="status-metrics" id="dashMetrics"></div>
+        </div>
+
+        <!-- [2] 实时指标 -->
+        <div class="card" id="metricsCard">
+          <div class="card-header">
+            <span class="card-title"><span class="icon">●</span> 实时指标</span>
+            <span style="font-size:10px;color:var(--text-tertiary);font-family:var(--font-mono)" id="metricsUpdated">轮询中…</span>
+          </div>
+          <div class="metrics-grid">
+            <div class="metric-cell"><div class="m-val" id="mTotal">-</div><div class="m-label">请求总数</div></div>
+            <div class="metric-cell"><div class="m-val" id="mActive">-</div><div class="m-label">活跃连接</div></div>
+            <div class="metric-cell"><div class="m-val" id="mAvgLatency">-</div><div class="m-label">平均耗时</div></div>
+            <div class="metric-cell"><div class="m-val" id="mP95">-</div><div class="m-label">P95 耗时</div></div>
+            <div class="metric-cell"><div class="m-val" id="mRPS">-</div><div class="m-label">请求速率</div></div>
+            <div class="metric-cell"><div class="m-val" id="mTPS">-</div><div class="m-label">Token 速率</div></div>
+          </div>
+          <div class="metrics-sub">
+            连接池 <span id="mPool">-</span>
+            &nbsp;·&nbsp; 错误 <span id="mErrors">-</span>
+            &nbsp;·&nbsp; 输入 <span id="mInputTokens">-</span>
+            &nbsp;·&nbsp; 输出 <span id="mOutputTokens">-</span>
+            &nbsp;·&nbsp; P99 <span id="mP99">-</span>
+          </div>
+        </div>
+
+        <!-- [3] 配置概览 -->
+        <!-- 路由映射 -->
+        <div class="card" id="routeTableCard">
+          <div class="card-header">
+            <span class="card-title"><span class="icon">▸</span> 路由映射</span>
+            <span style="font-size:10px;color:var(--text-tertiary);font-family:var(--font-mono)" id="routeCount"></span>
+          </div>
+          <div class="route-table-wrap">
+            <table class="route-table">
+              <thead><tr><th>类型</th><th>匹配规则</th><th>Provider</th><th>上游模型</th><th>Fallback</th></tr></thead>
+              <tbody id="routeTableBody"><tr><td colspan="5" style="text-align:center;color:var(--text-tertiary);padding:36px;font-family:var(--font-mono)">暂无路由数据</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Provider 卡片 -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title"><span class="icon">◆</span> 上游 Provider</span>
+            <span style="font-size:10px;color:var(--text-tertiary);font-family:var(--font-mono)" id="pvCount"></span>
+          </div>
+          <div class="pv-grid" id="dashProviderGrid">
+            <div style="text-align:center;color:var(--text-tertiary);padding:36px;font-family:var(--font-mono)">暂无 Provider 数据</div>
+          </div>
+        </div>
+
+        <!-- 接入指南（可折叠） -->
+        <div class="card" id="guideCard">
+          <div class="card-header" style="cursor:pointer" id="guideHeader">
+            <span class="card-title"><span class="icon" id="guideIcon">▾</span> 接入指南</span>
+            <span style="font-size:10px;color:var(--text-tertiary);font-family:var(--font-mono)" id="guideToggle">收起</span>
+          </div>
+          <div id="guideBody">
+            <div class="dash-grid">
+              <div class="card">
+                <div class="card-header">
+                  <span class="card-title"><span class="icon">▸</span> 客户端环境变量</span>
+                  <button class="btn sm" id="copyEnvBtn">复制</button>
+                </div>
+                <div class="copy-block" id="envBlock">加载中…</div>
+              </div>
+              <div class="card">
+                <div class="card-header">
+                  <span class="card-title"><span class="icon">▸</span> curl 测试命令</span>
+                  <button class="btn sm" id="copyCurlBtn">复制</button>
+                </div>
+                <div class="copy-block" id="curlBlock">加载中…</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Empty -->
+        <div class="empty-state hidden" id="dashEmpty">
+          <div class="empty-icon">▣</div>
+          <h2>没有配置方案</h2>
+          <p>创建配置方案后，仪表盘将展示服务状态和运行指标。</p>
+          <button class="btn primary" id="dashEmptyCreateBtn">创建第一个方案</button>
+        </div>
+      </div>
+    </main>
+
+    <!-- ─── Config View ─── -->
+    <main class="view" id="configView" style="display:none">
+      <div class="config-layout">
+        <aside class="config-sidebar">
+          <div class="cs-header">配置方案</div>
+          <div class="profile-list" id="profileList"></div>
+          <div class="cs-footer">
+            <span class="status-text"><span class="status-dot"></span>服务运行中</span>
+          </div>
+        </aside>
+
+        <div class="config-main">
+          <div class="empty-state" id="emptyState">
+            <div class="empty-icon">▣</div>
+            <h2>没有配置方案</h2>
+            <p>创建配置方案以开始使用代理服务。</p>
+            <button class="btn primary" id="emptyStateCreateBtn">创建配置</button>
+          </div>
+
+          <div id="editor" class="hidden" style="display:flex;flex-direction:column;flex:1">
+            <div class="config-main-header">
+              <div style="display:flex;align-items:center;gap:14px">
+                <input id="profileName" style="font-size:16px;font-weight:700;border:0;outline:0;background:transparent;width:auto;min-width:120px;color:var(--text-primary);font-family:var(--font-mono)" placeholder="方案名称" oninput="window.__markDirty()">
+                <span id="savedAt" style="font-size:10px;color:var(--text-tertiary);font-family:var(--font-mono)"></span>
+              </div>
+              <div style="display:flex;gap:6px">
+                <button class="btn" id="saveBtn" onclick="window.__doSave()">保存</button>
+                <button class="btn primary" id="activateBtn" onclick="window.__doActivate()">设为当前</button>
+              </div>
+            </div>
+
+            <div class="config-main-body">
+              <div id="modelDatalists"></div>
+              <div class="err-box hidden" id="errorBox"></div>
+
+              <div class="steps" id="stepBar">
+                <div class="step active" data-step="1"><span class="num">1</span>上游连接</div>
+                <div class="step-line"></div>
+                <div class="step" data-step="2"><span class="num">2</span>模型路由</div>
+                <div class="step-line"></div>
+                <div class="step" data-step="3"><span class="num">3</span>高级</div>
+              </div>
+
+              <!-- Step 1 -->
+              <section class="fcard" id="step1">
+                <div class="fcard-header"><h2 class="fcard-title">上游连接</h2></div>
+                <div class="field">
+                  <label>上游地址</label>
+                  <div style="display:flex;gap:8px">
+                    <select id="pvBaseUrlSelect" onchange="window.__onBaseUrlSelect()" style="flex:1;height:36px;padding:0 12px;background:var(--bg-input);border:1px solid var(--border);font-family:var(--font-mono);font-size:12px;outline:none;color:var(--text-primary)">
+                      <option value="">自定义…</option>
+                      <option value="https://api.deepseek.com/anthropic">DeepSeek (api.deepseek.com/anthropic)</option>
+                      <option value="http://127.0.0.1:3000">New API (localhost:3000)</option>
+                      <option value="https://api.openai.com/v1">OpenAI (api.openai.com/v1)</option>
+                    </select>
+                    <input id="pvBaseUrl" placeholder="https://your-upstream.com/anthropic" oninput="window.__onCustomUrlInput()" style="flex:2">
+                  </div>
+                </div>
+                <div class="field">
+                  <label>API Key</label>
+                  <input id="pvApiKey" type="text" placeholder="sk-xxx" oninput="window.__markDirty()" autocomplete="off">
+                  <span class="sub">Key 直接存储在 config-store.json，注意文件权限</span>
+                </div>
+                <div class="field">
+                  <label>Provider 名称</label>
+                  <input id="pvName" placeholder="自动从 URL 提取" oninput="window.__markDirty()">
+                  <span class="sub">路由中引用此 Provider 时使用的名称，留空则自动从地址提取</span>
+                </div>
+                <div class="btn-row">
+                  <button class="btn primary" onclick="window.__fetchMainModels()">获取模型列表</button>
+                  <span id="pvModelCount" style="font-size:11px;color:var(--text-tertiary);font-family:var(--font-mono)"></span>
+                </div>
+                <div class="model-preview hidden" id="pvModelPreview"></div>
+
+                <div style="margin-top:20px;padding-top:18px;border-top:1px solid var(--border)">
+                  <div class="field-row">
+                    <div class="field"><label>Models URL (可选)</label><input id="pvModelsUrl" placeholder="自动推断" oninput="window.__markDirty()"></div>
+                    <div class="field"><label>Timeout (ms)</label><input id="pvTimeout" type="number" placeholder="120000" oninput="window.__markDirty()"></div>
+                  </div>
+                  <div class="field"><label>Content Blocks</label><div class="chips" id="pvChips"></div></div>
+                </div>
+              </section>
+
+              <!-- Step 2 -->
+              <section class="fcard hidden" id="step2">
+                <div class="fcard-header"><h2 class="fcard-title">模型路由</h2></div>
+                <div style="margin-bottom:12px">
+                  <span style="font-size:10px;color:var(--text-tertiary);margin-right:6px;font-family:var(--font-mono)">快速添加：</span>
+                  <button class="btn ghost sm" onclick="window.__addRoutePreset('claude-sonnet','deepseek-v4-pro')">Claude Sonnet</button>
+                  <button class="btn ghost sm" onclick="window.__addRoutePreset('claude-opus','deepseek-v4-pro')">Claude Opus</button>
+                  <button class="btn ghost sm" onclick="window.__addRoutePreset('claude-haiku','deepseek-v4-pro')">Claude Haiku</button>
+                  <button class="btn ghost sm" onclick="window.__addRoute()">自定义</button>
+                </div>
+                <div class="route-list" id="routeList"></div>
+              </section>
+
+              <!-- Step 3 -->
+              <section class="fcard hidden" id="step3">
+                <div class="fcard-header"><h2 class="fcard-title">服务器设置</h2></div>
+                <div class="field-row" style="margin-bottom:14px">
+                  <div class="field"><label>Host</label><input id="svHost" placeholder="127.0.0.1" oninput="window.__markDirty()"></div>
+                  <div class="field"><label>Port</label><input id="svPort" type="number" placeholder="8787" oninput="window.__markDirty()"></div>
+                </div>
+                <div class="field">
+                  <label>本地鉴权密码 (可选)</label>
+                  <input id="svAuth" type="text" placeholder="不填则不校验" oninput="window.__markDirty()" autocomplete="off">
+                  <span class="sub">Claude Code 客户端的 ANTHROPIC_API_KEY 需填相同值</span>
+                </div>
+
+                <div style="margin-top:20px;padding-top:18px;border-top:1px solid var(--border)">
+                  <div class="fcard-header">
+                    <h2 class="fcard-title">其他 Provider</h2>
+                    <button class="btn ghost sm" onclick="window.__addProviderCard()">+ 添加</button>
+                  </div>
+                  <div id="providerCards"></div>
+                </div>
+
+                <div style="margin-top:20px;padding-top:18px;border-top:1px solid var(--border)">
+                  <div class="fcard-header"><h2 class="fcard-title">路由 Fallback</h2></div>
+                  <div id="fallbackEditor"></div>
+                </div>
+              </section>
+
+              <!-- 版本历史 -->
+              <div class="fcard" id="historyCard" style="margin-top:20px;display:none">
+                <div class="fcard-header" style="cursor:pointer" id="historyHeader">
+                  <h2 class="fcard-title">版本历史</h2>
+                  <span style="font-size:10px;color:var(--text-tertiary);font-family:var(--font-mono)" id="historyToggle">收起</span>
+                </div>
+                <div id="historyBody">
+                  <div id="historyList" style="font-family:var(--font-mono);font-size:11px;color:var(--text-secondary)">加载中…</div>
+                </div>
+              </div>
+
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
+                <button class="btn ghost" id="prevBtn" style="visibility:hidden">← 上一步</button>
+                <span style="font-size:11px;color:var(--text-tertiary);font-family:var(--font-mono)">步骤 <span id="stepNum">1</span>/3</span>
+                <button class="btn primary" id="nextBtn">下一步 →</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- ═══ Templates ═══ -->
+<template id="tmpl-route-row">
+  <div class="r-row">
+    <select class="r-type" onchange="window.__markDirty()">
+      <option value="prefix">前缀</option>
+      <option value="exact">精确</option>
+    </select>
+    <input class="r-match r-value" placeholder="claude-sonnet" oninput="window.__markDirty()">
+    <span class="r-arrow">→</span>
+    <input class="r-provider" placeholder="provider" onchange="window.__onRouteProviderInput(this)">
+    <span class="r-sep">/</span>
+    <input class="r-model" placeholder="model" oninput="window.__markDirty()">
+    <button class="r-rem" title="移除">×</button>
+  </div>
+</template>
+
+<template id="tmpl-route-row-select">
+  <div class="r-row">
+    <select class="r-type" onchange="window.__markDirty()">
+      <option value="prefix">前缀</option>
+      <option value="exact">精确</option>
+    </select>
+    <input class="r-match r-value" placeholder="claude-sonnet" oninput="window.__markDirty()">
+    <span class="r-arrow">→</span>
+    <input class="r-provider" placeholder="provider" onchange="window.__onRouteProviderInput(this)">
+    <span class="r-sep">/</span>
+    <select class="r-model" onchange="window.__markDirty()"><option value="">选择模型…</option></select>
+    <button class="r-rem" title="移除">×</button>
+  </div>
+</template>
+
+<template id="tmpl-fallback-row">
+  <div class="fb-row">
+    <input placeholder="provider" oninput="window.__markDirty()">
+    <input placeholder="model" oninput="window.__markDirty()">
+    <button class="btn ghost sm danger">×</button>
+  </div>
+</template>
+
+<template id="tmpl-dash-pv-card">
+  <div class="pv-dash-card">
+    <div class="pv-dash-name"><span class="conn-dot unknown"></span><span class="pv-dash-name-text"></span></div>
+    <div class="pv-dash-meta">Base URL: <span class="pv-dash-url"></span></div>
+    <div class="pv-dash-meta">Timeout: <span class="pv-dash-timeout"></span></div>
+    <div class="pv-dash-meta">Blocks: <span class="pv-dash-blocks"></span></div>
+    <div class="pv-dash-footer">
+      <button class="test-btn">测试连接</button>
+      <span class="model-count"></span>
+    </div>
+  </div>
+</template>
+
+<!-- ═══ Toast ═══ -->
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script type="module" src="/admin/js/app.js"></script>
+</body>
+</html>

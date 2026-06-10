@@ -1,4 +1,4 @@
-import { isObject } from "./util.js";
+import { isObject } from "../util.js";
 
 export function rewriteRequestModel<T extends { model?: unknown }>(body: T, upstreamModel: string): T & { model: string } {
   return {

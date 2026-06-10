@@ -1,6 +1,6 @@
-import { ProxyError } from "./errors.js";
-import { resolveProvider } from "./config.js";
-import type { AppConfig, MatchedRoute, ResolvedRouteTarget, RouteConfig, RouteTarget } from "./types.js";
+import { ProxyError } from "../errors.js";
+import { resolveProvider } from "../config/config.js";
+import type { AppConfig, MatchedRoute, ResolvedRouteTarget, RouteConfig, RouteTarget } from "../types.js";
 
 export function matchRoute(config: AppConfig, externalModel: string): MatchedRoute {
   const route = selectRoute(config.routes, externalModel);

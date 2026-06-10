@@ -1,7 +1,7 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
-import type { AppConfig } from "./types.js";
+import type { AppConfig } from "../types.js";
 
 // ── 类型 ──
 
@@ -13,10 +13,21 @@ export interface ConfigProfile {
   updatedAt: string;
 }
 
+export interface ConfigHistoryEntry {
+  id: string;
+  profileId: string;
+  profileName: string;
+  config: AppConfig;
+  timestamp: string;
+}
+
 interface StoreData {
   activeProfileId: string | null;
   profiles: ConfigProfile[];
+  history: ConfigHistoryEntry[];
 }
+
+const MAX_HISTORY = 50;
 
 // ── 存储路径 ──
 
@@ -34,23 +45,24 @@ async function readStore(): Promise<StoreData> {
       console.warn(
         `[store] ${storePath} 缺少 profiles 数组字段，将使用空配置（请检查文件格式）`
       );
-      return { activeProfileId: null, profiles: [] };
+      return { activeProfileId: null, profiles: [], history: [] };
     }
 
     return {
       activeProfileId: typeof parsed.activeProfileId === "string" ? parsed.activeProfileId : null,
-      profiles: parsed.profiles as ConfigProfile[]
+      profiles: parsed.profiles as ConfigProfile[],
+      history: Array.isArray(parsed.history) ? parsed.history as ConfigHistoryEntry[] : []
     };
   } catch (error) {
     // ENOENT 是首次启动的正常状态
     if (isNodeError(error) && error.code === "ENOENT") {
-      return { activeProfileId: null, profiles: [] };
+      return { activeProfileId: null, profiles: [], history: [] };
     }
     console.warn(
       `[store] 读取 ${storePath} 失败（将使用空配置）:`,
       error instanceof Error ? error.message : String(error)
     );
-    return { activeProfileId: null, profiles: [] };
+    return { activeProfileId: null, profiles: [], history: [] };
   }
 }
 
@@ -131,8 +143,23 @@ export async function updateProfile(id: string, name: string, config: AppConfig)
     const idx = store.profiles.findIndex((p) => p.id === id);
     if (idx === -1) return null;
 
+    const old = store.profiles[idx];
+
+    // 记录历史版本
+    store.history = store.history ?? [];
+    store.history.unshift({
+      id: randomUUID(),
+      profileId: id,
+      profileName: old.name,
+      config: JSON.parse(JSON.stringify(old.config)), // 深拷贝
+      timestamp: new Date().toISOString()
+    });
+    if (store.history.length > MAX_HISTORY) {
+      store.history.length = MAX_HISTORY;
+    }
+
     store.profiles[idx] = {
-      ...store.profiles[idx],
+      ...old,
       name,
       config,
       updatedAt: new Date().toISOString()
@@ -163,5 +190,44 @@ export async function activateProfile(id: string): Promise<boolean> {
 
     store.activeProfileId = id;
     return true;
+  });
+}
+
+export async function getProfileHistory(profileId: string): Promise<ConfigHistoryEntry[]> {
+  const store = await readStore();
+  return (store.history ?? []).filter((h) => h.profileId === profileId).slice(0, 10);
+}
+
+export async function rollbackProfile(profileId: string, historyId: string): Promise<ConfigProfile | null> {
+  return atomicUpdate((store) => {
+    const historyEntry = (store.history ?? []).find((h) => h.id === historyId && h.profileId === profileId);
+    if (!historyEntry) return null;
+
+    const idx = store.profiles.findIndex((p) => p.id === profileId);
+    if (idx === -1) return null;
+
+    const old = store.profiles[idx];
+
+    // 回滚操作本身也记录一条历史
+    store.history = store.history ?? [];
+    store.history.unshift({
+      id: randomUUID(),
+      profileId,
+      profileName: old.name,
+      config: JSON.parse(JSON.stringify(old.config)),
+      timestamp: new Date().toISOString()
+    });
+    if (store.history.length > MAX_HISTORY) {
+      store.history.length = MAX_HISTORY;
+    }
+
+    store.profiles[idx] = {
+      ...old,
+      name: old.name, // 回滚不改变方案名称
+      config: JSON.parse(JSON.stringify(historyEntry.config)),
+      updatedAt: new Date().toISOString()
+    };
+
+    return store.profiles[idx];
   });
 }

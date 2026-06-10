@@ -1,19 +1,21 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { request } from "undici";
-import { appConfigSchema, providerSchema, type AppConfig, type ProviderConfig } from "./types.js";
+import { appConfigSchema, providerSchema, type AppConfig, type ProviderConfig } from "../types.js";
 import {
   listProfiles,
   getActiveProfile,
   createProfile,
   updateProfile,
   deleteProfile,
-  activateProfile
-} from "./store.js";
-import { readEnv, trimTrailingSlash } from "./config.js";
-import { getMetricsSnapshot } from "./metrics.js";
-import { readFileSync } from "fs";
-import { fileURLToPath } from "url";
-import { dirname, join } from "path";
+  activateProfile,
+  getProfileHistory,
+  rollbackProfile
+} from "../config/store.js";
+import { readEnv, trimTrailingSlash } from "../config/config.js";
+import { getMetricsSnapshot } from "../proxy/metrics.js";
+export { adminPageHtml } from "./adminStatic.js";
+import { killProcessOnPort } from "../killPort.js";
+import { reloadConfig } from "../config/liveConfig.js";
 
 interface ProfileBody { name: string; config: AppConfig; }
 interface ActivateBody { id: string; }
@@ -80,7 +82,6 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
 
   // 释放当前端口（用于重启前清理）
   app.post("/api/admin/kill-port", async () => {
-    const { killProcessOnPort } = await import("./index.js");
     const port = app.server.address() && typeof app.server.address() === "object"
       ? (app.server.address() as { port: number }).port
       : null;
@@ -93,6 +94,29 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
       return { ok: true, message: `端口 ${port} 已释放，服务器正在退出（watch 模式将自动重启）` };
     }
     return { ok: false, error: "无法获取当前服务器端口" };
+  });
+
+  // 热重载配置（无需重启服务）
+  app.post("/api/admin/reload", async () => {
+    const config = await reloadConfig();
+    return { ok: true, config };
+  });
+
+  // 配置方案版本历史
+  app.get("/api/admin/profiles/:id/history", async (req: FastifyRequest<{ Params: { id: string } }>) => {
+    const history = await getProfileHistory(req.params.id);
+    return { ok: true, history };
+  });
+
+  // 回滚到历史版本
+  app.post("/api/admin/profiles/:id/rollback", async (req: FastifyRequest<{ Params: { id: string }; Body: { historyId: string } }>, reply) => {
+    const profile = await rollbackProfile(req.params.id, req.body?.historyId);
+    if (!profile) {
+      reply.code(404);
+      return { ok: false, error: "未找到对应历史版本或方案" };
+    }
+    await reloadConfig();
+    return { ok: true, profile };
   });
 }
 
@@ -231,11 +255,4 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function truncate(value: string, maxLength: number): string {
   return value.length <= maxLength ? value : `${value.slice(0, maxLength)}...`;
-}
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const adminHtml = readFileSync(join(__dirname, "admin.html"), "utf-8");
-
-export function adminPageHtml(): string {
-  return adminHtml;
 }

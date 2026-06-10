@@ -1,4 +1,4 @@
-import { isObject } from "./util.js";
+import { isObject } from "../util.js";
 
 /**
  * 请求体规范化：处理上游 API 与 Claude API 的校验差异。

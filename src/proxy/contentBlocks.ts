@@ -1,5 +1,5 @@
-import type { ResolvedProvider } from "./types.js";
-import { isObject } from "./util.js";
+import type { ResolvedProvider } from "../types.js";
+import { isObject } from "../util.js";
 
 /** 过滤后被追加到消息中的提示文本 */
 const FILTER_NOTE =

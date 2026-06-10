@@ -1,15 +1,17 @@
 import cors from "@fastify/cors";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { ProxyError, sendAnthropicError } from "./errors.js";
-import { filterUnsupportedContentBlocks } from "./contentBlocks.js";
-import { acquireUpstreamSlot, callAnthropicUpstream, releaseUpstreamSlot } from "./http.js";
-import { restoreResponseModel, rewriteRequestModel, rewriteSseChunkText } from "./modelRewrite.js";
-import { normalizeUpstreamBody } from "./requestNormalize.js";
-import { listExternalModels, matchRoute } from "./router.js";
+import { filterUnsupportedContentBlocks } from "./proxy/contentBlocks.js";
+import { acquireUpstreamSlot, callAnthropicUpstream, releaseUpstreamSlot } from "./proxy/http.js";
+import { restoreResponseModel, rewriteRequestModel, rewriteSseChunkText } from "./proxy/modelRewrite.js";
+import { normalizeUpstreamBody } from "./proxy/requestNormalize.js";
+import { listExternalModels, matchRoute } from "./proxy/router.js";
 import type { AppConfig, MatchedRoute, ResolvedRouteTarget } from "./types.js";
-import { adminPageHtml, registerAdminRoutes } from "./admin.js";
+import { adminPageHtml, registerAdminRoutes } from "./admin/adminRoutes.js";
+import { registerAdminStaticRoutes } from "./admin/adminStatic.js";
 import { isObject } from "./util.js";
-import { recordRequestDone, recordRequestStart } from "./metrics.js";
+import { recordRequestDone, recordRequestStart } from "./proxy/metrics.js";
+import { getConfig } from "./config/liveConfig.js";
 
 type AnthropicMessagesBody = {
   model?: unknown;
@@ -37,14 +39,16 @@ function createLogger() {
       target: "pino-pretty",
       options: {
         colorize: true,
-        translateTime: "HH:MM:ss",
+        translateTime: "SYS:HH:MM:ss",
         ignore: "pid,hostname"
       }
     }
   };
 }
 
-export function printStartupBanner(app: FastifyInstance, config: AppConfig, adminUrl: string): void {
+export function printStartupBanner(app: FastifyInstance): void {
+  const config = getConfig();
+  const adminUrl = `http://${config.server.host}:${config.server.port}/admin`;
   const lines = [
     "",
     "══════════════════════════════════════════════════════",
@@ -78,7 +82,9 @@ export function printStartupBanner(app: FastifyInstance, config: AppConfig, admi
   app.log.info(lines.join("\n"));
 }
 
-export async function buildServer(config: AppConfig): Promise<FastifyInstance> {
+export async function buildServer(configOverride?: AppConfig): Promise<FastifyInstance> {
+  // 仅测试场景传入 configOverride（覆盖 liveConfig），生产环境用 getConfig() 热更新
+  const resolveConfig = (): AppConfig => configOverride ?? getConfig();
   const app = Fastify({
     logger: createLogger(),
     disableRequestLogging: true,       // 关闭 Fastify 默认的每次请求日志，我们自己在 proxyWithFallback 里打
@@ -103,17 +109,17 @@ export async function buildServer(config: AppConfig): Promise<FastifyInstance> {
 
   app.addHook("preHandler", async (request) => {
     // 管理页面和 API 不要求认证
-    if (request.url === "/healthz" || request.url === "/admin" || request.url.startsWith("/api/admin")) {
+    if (request.url === "/healthz" || request.url.startsWith("/admin") || request.url.startsWith("/api/admin")) {
       return;
     }
 
-    authenticate(config, request);
+    authenticate(resolveConfig(), request);
   });
 
   app.get("/healthz", async () => ({ ok: true }));
 
   app.get("/v1/models", async () => ({
-    data: listExternalModels(config).map((id) => ({
+    data: listExternalModels(resolveConfig()).map((id) => ({
       id,
       type: "model",
       display_name: id
@@ -123,13 +129,13 @@ export async function buildServer(config: AppConfig): Promise<FastifyInstance> {
 
   app.post("/v1/messages", async (request, reply) => {
     const body = parseMessagesBody(request.body);
-    const route = matchRoute(config, body.model);
+    const route = matchRoute(resolveConfig(), body.model);
     return proxyWithFallback(request, reply, route, "/v1/messages", body);
   });
 
   app.post("/v1/messages/count_tokens", async (request, reply) => {
     const body = parseMessagesBody(request.body);
-    const route = matchRoute(config, body.model);
+    const route = matchRoute(resolveConfig(), body.model);
     return proxyWithFallback(request, reply, route, "/v1/messages/count_tokens", body);
   });
 
@@ -140,6 +146,7 @@ export async function buildServer(config: AppConfig): Promise<FastifyInstance> {
   });
 
   await registerAdminRoutes(app);
+  registerAdminStaticRoutes(app);
 
   return app;
 }

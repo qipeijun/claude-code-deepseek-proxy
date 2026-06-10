@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultConfig } from "../src/defaultConfig.js";
+import { defaultConfig } from "../src/config/defaultConfig.js";
 
 describe("default config", () => {
   it("is empty, requiring admin page setup", () => {

@@ -1,5 +1,5 @@
-import { ProxyError } from "./errors.js";
-import type { AppConfig, ResolvedProvider } from "./types.js";
+import { ProxyError } from "../errors.js";
+import type { AppConfig, ResolvedProvider } from "../types.js";
 
 export function resolveProvider(config: AppConfig, name: string): ResolvedProvider {
   const provider = config.providers[name];

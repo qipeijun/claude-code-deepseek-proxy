@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeUpstreamBody } from "../src/requestNormalize.js";
+import { normalizeUpstreamBody } from "../src/proxy/requestNormalize.js";
 
 describe("normalizeUpstreamBody", () => {
   it("思考关闭时删除 thinking 和 reasoning_effort（子代理场景）", () => {

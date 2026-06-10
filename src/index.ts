@@ -1,74 +1,69 @@
-import { execSync } from "child_process";
-import { defaultConfig } from "./defaultConfig.js";
-import { getActiveProfile } from "./store.js";
+import { killProcessOnPort } from "./killPort.js";
+import { initConfig } from "./config/liveConfig.js";
 import { buildServer, printStartupBanner } from "./server.js";
+import { destroyAgents } from "./proxy/http.js";
 
-// ── CLI 参数 ──
-const killPort = process.argv.includes("--kill-port");
-
-// 优先使用持久化存储的活动方案，没有则使用内置默认配置
-const profile = await getActiveProfile();
-const configSource = profile ? `存储方案 "${profile.name}"` : "内置默认配置（空）";
-const config = profile ? profile.config : defaultConfig;
+// 从持久化存储加载活动方案，没有则使用内置默认配置
+const config = await initConfig();
 const port = config.server.port;
 const adminUrl = `http://${config.server.host}:${port}/admin`;
 
-// ── 强制释放端口 ──
-if (killPort) {
-  killProcessOnPort(port);
-}
+// ── 启动前自动释放端口 ──
+killProcessOnPort(port);
 
-const app = await buildServer(config);
+const app = await buildServer();
 
-printStartupBanner(app, config, adminUrl);
+printStartupBanner(app);
 
 // ── 优雅关闭 ──
-const shutdown = async (signal: string) => {
-  app.log.info(`收到 ${signal}，正在关闭服务...`);
-  try {
-    await app.close();
-  } catch {
-    // 忽略关闭过程中的错误
+// 使用 once 防止重复 Ctrl+C 触发并发 shutdown；关闭流程最长等 5 秒后强制退出
+let shuttingDown = false;
+
+const shutdown = (signal: string) => {
+  if (shuttingDown) {
+    // 再次收到信号，跳过等待，直接强制退出
+    app.log.warn(`再次收到 ${signal}，强制退出`);
+    process.exit(1);
   }
-  process.exit(0);
+  shuttingDown = true;
+
+  app.log.info(`收到 ${signal}，正在关闭服务...`);
+
+  // 5 秒超时：SSE 流式请求可能长时间阻塞 app.close()，超时后强制退出
+  const forceTimer = setTimeout(() => {
+    app.log.warn("关闭超时（5秒），强制退出");
+    process.exit(1);
+  }, 5000);
+  // unref 避免 timer 自身阻止事件循环退出；只要有其他活跃句柄（如 undici 连接），
+  // 回调仍会按时触发
+  forceTimer.unref();
+
+  app.close().then(() => {
+    clearTimeout(forceTimer);
+    destroyAgents();
+    process.exit(0);
+  }).catch(() => {
+    clearTimeout(forceTimer);
+    destroyAgents();
+    process.exit(0);
+  });
 };
 
-process.on("SIGINT", () => shutdown("SIGINT"));
-process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.once("SIGINT", () => shutdown("SIGINT"));
+process.once("SIGTERM", () => shutdown("SIGTERM"));
 
 await app.listen({
   host: config.server.host,
   port
 });
 
-app.log.info(`配置来源: ${configSource}`);
+app.log.info(`配置来源: ${config.routes.length > 0 ? "存储方案" : "内置默认配置（空）"}`);
 
 if (config.routes.length === 0) {
   app.log.warn("══════════════════════════════════════════════════════");
   app.log.warn("  当前没有任何路由规则，代理无法转发请求。");
-  app.log.warn(`  请打开管理后台 ${adminUrl} 完成配置后重启服务。`);
+  app.log.warn(`  请打开管理后台 ${adminUrl} 完成配置后保存即可生效。`);
   app.log.warn("══════════════════════════════════════════════════════");
 }
 
 app.log.info("服务已启动");
-
-// ── 释放端口工具函数 ──
-export function killProcessOnPort(p: number): void {
-  try {
-    const stdout = execSync(`lsof -ti :${p}`, { encoding: "utf8" });
-    const pids = stdout.trim().split("\n").filter(Boolean);
-    if (pids.length > 0) {
-      console.log(`端口 ${p} 被进程 ${pids.join(", ")} 占用，正在释放...`);
-      for (const pid of pids) {
-        try {
-          execSync(`kill -9 ${pid}`);
-        } catch {
-          // 继续处理下一个
-        }
-      }
-      console.log(`端口 ${p} 已释放`);
-    }
-  } catch {
-    // lsof 没找到进程会以非 0 退出，说明端口空闲，这是正常情况
-  }
-}

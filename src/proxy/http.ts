@@ -1,11 +1,19 @@
 import { Agent, request } from "undici";
-import { ProxyError } from "./errors.js";
-import type { ResolvedRouteTarget } from "./types.js";
+import { ProxyError } from "../errors.js";
+import type { ResolvedRouteTarget } from "../types.js";
 
 export type UpstreamResponse = Awaited<ReturnType<typeof request>>;
 
 // 按 baseUrl 缓存 Agent 实例，复用 TCP + TLS 连接
 const agentCache = new Map<string, Agent>();
+
+/** 销毁所有缓存的 Agent 实例，释放 keep-alive 连接，在进程关闭前调用 */
+export function destroyAgents(): void {
+  for (const agent of agentCache.values()) {
+    agent.destroy();
+  }
+  agentCache.clear();
+}
 
 // 通过环境变量调整并发连接数上限（每个上游 origin），默认 32
 const MAX_CONNECTIONS = resolvePoolSize(process.env.UPSTREAM_MAX_CONNECTIONS, 32);

@@ -5,7 +5,14 @@ import type { AppConfig, MatchedRoute, ResolvedRouteTarget, RouteConfig, RouteTa
 export function matchRoute(config: AppConfig, externalModel: string): MatchedRoute {
   const route = selectRoute(config.routes, externalModel);
   if (!route) {
-    throw new ProxyError(404, "not_found_error", `No route configured for model "${externalModel}"`);
+    const hint = config.routes.length === 0
+      ? "（没有任何路由规则，请通过 admin 页面配置后重启）"
+      : "";
+    throw new ProxyError(
+      404,
+      "not_found_error",
+      `没有匹配 "${externalModel}" 的路由规则${hint}`
+    );
   }
 
   return {
@@ -25,9 +32,18 @@ function selectRoute(routes: RouteConfig[], model: string): RouteConfig | undefi
     return exact;
   }
 
-  return routes
-    .filter((route) => route.match.prefix && model.startsWith(route.match.prefix))
-    .sort((left, right) => right.match.prefix!.length - left.match.prefix!.length)[0];
+  // 取最长匹配的 prefix 路由（reduce 一次遍历，不创建中间数组）
+  let best: RouteConfig | undefined;
+  let bestLen = 0;
+  for (const route of routes) {
+    if (route.match.prefix && model.startsWith(route.match.prefix)) {
+      if (route.match.prefix.length > bestLen) {
+        best = route;
+        bestLen = route.match.prefix.length;
+      }
+    }
+  }
+  return best;
 }
 
 function resolveRouteTarget(config: AppConfig, target: RouteTarget): ResolvedRouteTarget {

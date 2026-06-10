@@ -135,6 +135,84 @@ describe("Anthropic proxy server", () => {
     expect(response.json().error.message).toContain("image");
   });
 
+  it("loads configurable upstream models for admin provider forms", async () => {
+    const upstream = Fastify({ logger: false });
+    upstream.get("/models", async (request, reply) => {
+      expect(request.headers["x-api-key"]).toBe("direct-deepseek-key");
+      return reply.send({
+        data: [
+          { id: "deepseek-v4-pro" },
+          { id: "deepseek-v4-flash" }
+        ]
+      });
+    });
+    await upstream.listen({ host: "127.0.0.1", port: 0 });
+    const address = upstream.server.address();
+    if (!address || typeof address === "string") {
+      throw new Error("Expected upstream TCP address");
+    }
+
+    const app = await buildServer(makeConfig(`http://127.0.0.1:${address.port}`));
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/admin/upstream-models",
+      payload: {
+        provider: {
+          type: "anthropic",
+          baseUrl: `http://127.0.0.1:${address.port}/anthropic`,
+          modelsUrl: `http://127.0.0.1:${address.port}/models`,
+          apiKeyEnv: "DEEPSEEK_API_KEY",
+          timeoutMs: 120000,
+          capabilities: { contentBlocks: ["text"] }
+        },
+        apiKey: "direct-deepseek-key"
+      }
+    });
+
+    await app.close();
+    await upstream.close();
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      ok: true,
+      models: ["deepseek-v4-flash", "deepseek-v4-pro"]
+    });
+  });
+
+  it("derives DeepSeek model list URL from anthropic base URL when modelsUrl is omitted", async () => {
+    const upstream = Fastify({ logger: false });
+    upstream.get("/models", async (_request, reply) => reply.send({ data: [{ id: "deepseek-v4-pro" }] }));
+    upstream.get("/anthropic/v1/models", async (_request, reply) => reply.code(404).send({ error: "wrong endpoint" }));
+    await upstream.listen({ host: "127.0.0.1", port: 0 });
+    const address = upstream.server.address();
+    if (!address || typeof address === "string") {
+      throw new Error("Expected upstream TCP address");
+    }
+
+    const app = await buildServer(makeConfig(`http://127.0.0.1:${address.port}`));
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/admin/upstream-models",
+      payload: {
+        provider: {
+          type: "anthropic",
+          baseUrl: `http://127.0.0.1:${address.port}/anthropic`,
+          apiKeyEnv: "DEEPSEEK_API_KEY",
+          timeoutMs: 120000,
+          capabilities: { contentBlocks: ["text"] }
+        },
+        apiKey: "direct-deepseek-key"
+      }
+    });
+
+    await app.close();
+    await upstream.close();
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      ok: true,
+      models: ["deepseek-v4-pro"]
+    });
+  });
+
   it("uses only configured fallback targets on upstream failure", async () => {
     const upstream = await createUpstream((body, count) => {
       if (count === 1) {

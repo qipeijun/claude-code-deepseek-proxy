@@ -1,5 +1,6 @@
 import { ProxyError } from "./errors.js";
-import type { ContentBlockType, ResolvedProvider } from "./types.js";
+import { contentBlockTypeSchema, type ContentBlockType, type ResolvedProvider } from "./types.js";
+import { isObject } from "./util.js";
 
 type Message = {
   content?: unknown;
@@ -11,16 +12,7 @@ type AnthropicRequest = {
   [key: string]: unknown;
 };
 
-const knownBlockTypes = new Set<ContentBlockType>([
-  "text",
-  "tool_use",
-  "tool_result",
-  "thinking",
-  "image",
-  "document",
-  "mcp_tool_use",
-  "mcp_tool_result"
-]);
+const knownBlockTypes = new Set<ContentBlockType>(contentBlockTypeSchema.options);
 
 export function assertSupportedContentBlocks(body: AnthropicRequest, provider: ResolvedProvider): void {
   const allowed = new Set(provider.capabilities.contentBlocks);
@@ -57,8 +49,4 @@ function collectFromContent(content: unknown, result: string[]): void {
       result.push(block.type);
     }
   }
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }

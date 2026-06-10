@@ -1,3 +1,5 @@
+import { isObject } from "./util.js";
+
 export function rewriteRequestModel<T extends { model?: unknown }>(body: T, upstreamModel: string): T & { model: string } {
   return {
     ...body,
@@ -12,23 +14,20 @@ export function restoreResponseModel<T>(payload: T, externalModel: string): T {
 
   const nextPayload: Record<string, unknown> = { ...payload };
 
-  if (typeof payload.model !== "string") {
-    if (isObject(payload.message) && typeof payload.message.model === "string") {
-      nextPayload.message = {
-        ...payload.message,
-        model: externalModel
-      };
-
-      return nextPayload as T;
-    }
-
-    return payload;
+  // 还原顶层 model 字段
+  if (typeof payload.model === "string") {
+    nextPayload.model = externalModel;
   }
 
-  return {
-    ...nextPayload,
-    model: externalModel
-  } as T;
+  // 还原嵌套 message.model（SSE message_start 事件中包含）
+  if (isObject(payload.message) && typeof payload.message.model === "string") {
+    nextPayload.message = {
+      ...payload.message,
+      model: externalModel
+    };
+  }
+
+  return nextPayload as T;
 }
 
 export function rewriteSseChunkText(text: string, externalModel: string): string {
@@ -59,8 +58,4 @@ function rewriteSseEvent(event: string, externalModel: string): string {
       }
     })
     .join("\n");
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }

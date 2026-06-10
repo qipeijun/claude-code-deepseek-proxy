@@ -1,0 +1,1511 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Proxy Console</title>
+<style>
+/* ═══════════════════════════════════════════════════════
+   Industrial Terminal — Developer Operations Console
+   ═══════════════════════════════════════════════════════ */
+:root {
+  --bg-root: #08080c;
+  --bg-panel: #0e0e14;
+  --bg-elevated: #14141c;
+  --bg-input: #181820;
+  --bg-hover: #1c1c28;
+  --text-primary: #e0e0e8;
+  --text-secondary: #808090;
+  --text-tertiary: #484858;
+  --text-muted: #303040;
+  --accent: #00e676;
+  --accent-dim: rgba(0,230,118,0.06);
+  --accent-glow: rgba(0,230,118,0.15);
+  --warning: #ffab40;
+  --danger: #ff5252;
+  --info: #448aff;
+  --border: #1a1a28;
+  --border-active: #2a2a3c;
+  --radius: 0px;
+  --radius-sm: 0px;
+  --radius-lg: 0px;
+  --font-mono: 'SF Mono','Menlo','Consolas','Courier New',monospace;
+  --font-ui: -apple-system,'SF Pro Display',BlinkMacSystemFont,'Helvetica Neue',sans-serif;
+  --shadow: none;
+  --shadow-sm: none;
+  --transition: 0.12s ease;
+}
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--bg-root);color:var(--text-primary);
+  font-family:var(--font-mono);font-size:13px;line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+  background-image:
+    linear-gradient(rgba(0,230,118,0.012) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(0,230,118,0.012) 1px,transparent 1px);
+  background-size:32px 32px;
+}
+
+button,input,select,textarea{font:inherit;color:inherit}
+button{border:0;cursor:pointer;background:none}
+a{color:var(--accent);text-decoration:none}
+.hidden{display:none!important}
+
+/* scrollbar — terminal thin */
+::-webkit-scrollbar{width:3px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border-active);border-radius:0}
+::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+
+/* ═══════════════════════════════════════════════════════
+   Top Bar — Command Line
+   ═══════════════════════════════════════════════════════ */
+.app{display:flex;flex-direction:column;height:100vh}
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;
+  height:40px;padding:0 20px;flex-shrink:0;z-index:20;
+  background:var(--bg-panel);
+  border-bottom:1px solid var(--border);
+}
+.topbar-left{display:flex;align-items:center;gap:24px}
+.logo{
+  display:flex;align-items:center;gap:8px;
+  font-weight:700;font-size:13px;letter-spacing:-0.2px;
+  color:var(--accent);user-select:none;font-family:var(--font-mono);
+}
+.logo-mark{
+  width:22px;height:22px;border-radius:0;
+  background:var(--accent);
+  display:grid;place-items:center;
+  font-family:var(--font-mono);font-size:9px;font-weight:700;color:var(--bg-root);
+}
+.tabs{display:flex;gap:0;border:1px solid var(--border)}
+.tab-btn{
+  height:26px;padding:0 16px;font-size:11px;font-weight:600;color:var(--text-secondary);
+  transition:all var(--transition);font-family:var(--font-mono);
+  text-transform:uppercase;letter-spacing:0.5px;
+  border-right:1px solid var(--border);
+}
+.tab-btn:last-child{border-right:0}
+.tab-btn:hover{color:var(--text-primary);background:var(--bg-hover)}
+.tab-btn.on{
+  color:var(--bg-root);background:var(--accent);
+  font-weight:700;
+}
+.topbar-right{display:flex;align-items:center;gap:16px}
+.server-name{font-size:11px;color:var(--text-tertiary);font-family:var(--font-mono)}
+.port-badge{
+  display:flex;align-items:center;gap:6px;
+  font-size:11px;color:var(--accent);font-weight:600;font-family:var(--font-mono);
+}
+.port-badge .live-dot{
+  width:6px;height:6px;border-radius:0;background:var(--accent);
+  animation:blink 1.2s step-end infinite;
+}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.15}}
+
+/* ═══════════════════════════════════════════════════════
+   Main Layout
+   ═══════════════════════════════════════════════════════ */
+.main-area{flex:1;overflow:hidden;display:flex}
+.view{flex:1;overflow-y:auto;display:flex;flex-direction:column}
+.view-content{flex:1;padding:20px 24px 60px;max-width:100%;margin:0}
+
+/* ═══════════════════════════════════════════════════════
+   Dashboard Grid
+   ═══════════════════════════════════════════════════════ */
+.dash-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;margin-bottom:1px;background:var(--border)}
+@media(max-width:800px){.dash-grid{grid-template-columns:1fr}}
+
+/* ═══════════════════════════════════════════════════════
+   Panel — Terminal Window Frame
+   ═══════════════════════════════════════════════════════ */
+.card{
+  background:var(--bg-panel);padding:16px 20px;
+  border:1px solid var(--border);
+  transition:border-color var(--transition);
+  margin-bottom:1px;
+}
+.card:hover{border-color:var(--border-active)}
+.card-header{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:14px;padding-bottom:10px;
+  border-bottom:1px solid var(--border);
+}
+.card-title{
+  font-weight:600;font-size:10px;letter-spacing:1px;text-transform:uppercase;
+  display:flex;align-items:center;gap:8px;color:var(--text-tertiary);
+  font-family:var(--font-ui);
+}
+.card-title .icon{font-size:10px;opacity:0.7}
+
+/* Status Banner */
+.status-banner{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 20px;background:var(--bg-panel);
+  border:1px solid var(--border);
+  margin-bottom:1px;flex-wrap:wrap;gap:12px;
+}
+.status-left{display:flex;align-items:center;gap:10px}
+.status-pulse{
+  width:8px;height:8px;flex-shrink:0;
+  background:var(--accent);
+  animation:blink 1.2s step-end infinite;
+}
+.status-pulse.off{background:var(--text-tertiary);animation:none}
+.status-label{
+  font-weight:600;font-size:12px;font-family:var(--font-mono);
+  text-transform:uppercase;letter-spacing:0.5px;
+}
+.status-label small{font-weight:400;color:var(--text-secondary);font-size:11px;margin-left:6px;text-transform:none}
+.status-metrics{display:flex;gap:24px;flex-wrap:wrap}
+.metric{text-align:center}
+.metric .val{
+  font-size:18px;font-weight:700;color:var(--accent);letter-spacing:-0.5px;
+  font-family:var(--font-mono);
+}
+.metric .lbl{
+  font-size:9px;color:var(--text-tertiary);font-weight:600;margin-top:2px;
+  letter-spacing:1px;text-transform:uppercase;font-family:var(--font-ui);
+}
+
+/* Quick Actions */
+.copy-block{
+  background:var(--bg-root);padding:14px 16px;position:relative;
+  font-family:var(--font-mono);font-size:11px;line-height:1.9;
+  color:var(--text-secondary);white-space:pre-wrap;word-break:break-all;
+  max-height:130px;overflow-y:auto;border:1px solid var(--border);
+}
+.copy-block .copy-btn{
+  position:absolute;top:8px;right:8px;
+  height:26px;padding:0 12px;
+  background:var(--bg-elevated);border:1px solid var(--border);
+  font-family:var(--font-mono);font-size:10px;font-weight:600;color:var(--accent);
+  transition:all var(--transition);text-transform:uppercase;letter-spacing:0.5px;
+}
+.copy-block .copy-btn:hover{background:var(--accent);color:var(--bg-root);border-color:var(--accent)}
+.copy-block .copy-btn.copied{background:var(--accent);color:var(--bg-root)}
+
+/* ═══════════════════════════════════════════════════════
+   Metrics Panel — The Heartbeat
+   ═══════════════════════════════════════════════════════ */
+#metricsCard{margin-bottom:1px}
+.metrics-grid{
+  display:grid;grid-template-columns:repeat(6,1fr);
+  gap:2px;background:var(--border);margin-bottom:2px;
+}
+.metrics-grid .metric-cell{
+  background:var(--bg-elevated);padding:16px 14px;text-align:center;
+  border:1px solid transparent;transition:border-color var(--transition);
+}
+.metrics-grid .metric-cell:hover{border-color:var(--border-active)}
+.metrics-grid .metric-cell .m-val{
+  font-family:var(--font-mono);font-size:24px;font-weight:700;
+  color:var(--accent);letter-spacing:-1px;line-height:1.1;
+}
+.metrics-grid .metric-cell .m-label{
+  font-family:var(--font-ui);font-size:9px;color:var(--text-tertiary);
+  text-transform:uppercase;letter-spacing:1px;font-weight:600;margin-top:4px;
+}
+.metrics-sub{
+  display:flex;justify-content:center;align-items:center;gap:20px;
+  padding:8px 16px;
+  font-family:var(--font-mono);font-size:11px;color:var(--text-tertiary);
+}
+.metrics-sub span{font-weight:600;color:var(--text-secondary)}
+
+/* ═══════════════════════════════════════════════════════
+   Route Table — Data Grid
+   ═══════════════════════════════════════════════════════ */
+.route-table-wrap{overflow-x:auto}
+.route-table{width:100%;border-collapse:collapse}
+.route-table th{
+  text-align:left;padding:8px 12px;font-size:9px;font-weight:700;
+  color:var(--text-tertiary);text-transform:uppercase;letter-spacing:1px;
+  border-bottom:1px solid var(--border);font-family:var(--font-ui);
+}
+.route-table td{
+  padding:10px 12px;font-size:12px;border-bottom:1px solid var(--border);
+  font-family:var(--font-mono);color:var(--text-secondary);
+}
+.route-table tr:hover td{background:var(--bg-elevated)}
+.route-table tr:last-child td{border-bottom:0}
+.route-table .r-type-badge{
+  display:inline-block;padding:2px 8px;
+  font-size:9px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;
+  font-family:var(--font-ui);
+}
+.route-table .r-type-badge.prefix{background:rgba(68,138,255,0.1);color:var(--info);border:1px solid rgba(68,138,255,0.2)}
+.route-table .r-type-badge.exact{background:var(--accent-dim);color:var(--accent);border:1px solid rgba(0,230,118,0.2)}
+.fb-pop{
+  position:relative;cursor:help;
+  border-bottom:1px dashed var(--text-tertiary);color:var(--warning);
+  font-weight:600;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Provider Dashboard Cards
+   ═══════════════════════════════════════════════════════ */
+.pv-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border)}
+@media(max-width:800px){.pv-grid{grid-template-columns:1fr}}
+.pv-dash-card{
+  background:var(--bg-elevated);padding:14px 16px;
+  border:1px solid transparent;transition:border-color var(--transition);
+}
+.pv-dash-card:hover{border-color:var(--border-active)}
+.pv-dash-card .pv-dash-name{
+  font-weight:600;font-size:12px;margin-bottom:10px;
+  display:flex;align-items:center;gap:8px;color:var(--text-primary);
+  font-family:var(--font-mono);
+}
+.pv-dash-card .pv-dash-name .conn-dot{
+  width:6px;height:6px;flex-shrink:0;
+}
+.pv-dash-card .pv-dash-name .conn-dot.unknown{background:var(--text-tertiary)}
+.pv-dash-card .pv-dash-name .conn-dot.ok{background:var(--accent);box-shadow:0 0 6px var(--accent-glow)}
+.pv-dash-card .pv-dash-name .conn-dot.fail{background:var(--danger)}
+.pv-dash-card .pv-dash-name .conn-dot.testing{background:var(--warning);animation:blink 0.5s infinite}
+.pv-dash-meta{font-family:var(--font-mono);font-size:10px;color:var(--text-tertiary);line-height:2}
+.pv-dash-meta span{color:var(--text-secondary)}
+.pv-dash-footer{margin-top:12px;display:flex;align-items:center;gap:10px}
+.pv-dash-footer .model-count{font-size:11px;color:var(--accent);font-weight:600;font-family:var(--font-mono)}
+.pv-dash-footer .test-btn{
+  height:28px;padding:0 14px;
+  background:transparent;border:1px solid var(--border);
+  font-family:var(--font-mono);font-size:10px;font-weight:600;color:var(--accent);
+  text-transform:uppercase;letter-spacing:0.5px;
+  transition:all var(--transition);
+}
+.pv-dash-footer .test-btn:hover{background:var(--accent);color:var(--bg-root);border-color:var(--accent)}
+.pv-dash-footer .test-btn.testing{pointer-events:none;opacity:0.5}
+
+/* ═══════════════════════════════════════════════════════
+   Empty State
+   ═══════════════════════════════════════════════════════ */
+.empty-state{text-align:center;padding:80px 40px}
+.empty-state .empty-icon{font-size:36px;margin-bottom:16px;opacity:0.2}
+.empty-state h2{font-size:16px;font-weight:700;margin-bottom:6px;color:var(--text-primary);font-family:var(--font-mono)}
+.empty-state p{color:var(--text-secondary);margin-bottom:20px;max-width:340px;margin-left:auto;margin-right:auto;line-height:1.6;font-size:12px}
+
+/* ═══════════════════════════════════════════════════════
+   Config View — Sidebar
+   ═══════════════════════════════════════════════════════ */
+.config-layout{display:flex;flex:1;overflow:hidden}
+.config-sidebar{
+  width:240px;flex-shrink:0;border-right:1px solid var(--border);
+  background:var(--bg-panel);display:flex;flex-direction:column;overflow:hidden;
+}
+.cs-header{
+  padding:14px 16px 10px;font-size:9px;font-weight:700;
+  color:var(--text-tertiary);text-transform:uppercase;letter-spacing:1px;
+  font-family:var(--font-ui);
+}
+.profile-list{flex:1;overflow-y:auto;padding:4px 10px}
+.profile-item{
+  padding:10px 14px;cursor:pointer;
+  margin-bottom:1px;border:1px solid transparent;
+  transition:all var(--transition);
+}
+.profile-item:hover{background:var(--bg-elevated);border-color:var(--border)}
+.profile-item.current{background:var(--bg-elevated);border-color:var(--border-active)}
+.profile-item.active .profile-name{color:var(--accent)}
+.profile-item .profile-name{
+  font-weight:600;font-size:12px;margin-bottom:2px;
+  display:flex;align-items:center;gap:7px;
+  font-family:var(--font-mono);
+}
+.profile-item .profile-meta{font-size:10px;color:var(--text-tertiary)}
+.profile-item .profile-actions{display:flex;gap:3px;margin-top:6px;opacity:0;transition:opacity 0.1s}
+.profile-item:hover .profile-actions{opacity:1}
+.profile-item .badge{
+  font-size:9px;padding:1px 6px;
+  background:var(--accent-dim);color:var(--accent);font-weight:700;
+  border:1px solid rgba(0,230,118,0.2);
+  font-family:var(--font-ui);text-transform:uppercase;letter-spacing:0.3px;
+}
+.cs-footer{padding:10px 16px;border-top:1px solid var(--border)}
+.cs-footer .status-text{font-size:10px;color:var(--text-tertiary);display:flex;align-items:center;gap:6px;font-family:var(--font-mono)}
+.cs-footer .status-dot{width:5px;height:5px;background:var(--accent);animation:blink 1.2s step-end infinite}
+
+.config-main{flex:1;overflow-y:auto;display:flex;flex-direction:column}
+.config-main-header{
+  padding:12px 20px;border-bottom:1px solid var(--border);
+  background:var(--bg-panel);
+  position:sticky;top:0;z-index:5;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.config-main-body{flex:1;padding:20px 24px 60px;max-width:680px;margin:0 auto;width:100%}
+
+/* Steps */
+.steps{display:flex;align-items:center;margin-bottom:28px}
+.step{
+  display:flex;align-items:center;gap:7px;font-size:11px;color:var(--text-tertiary);
+  cursor:pointer;transition:color var(--transition);white-space:nowrap;
+  font-family:var(--font-mono);
+}
+.step .num{
+  width:24px;height:24px;display:grid;place-items:center;
+  font-size:11px;font-weight:700;font-family:var(--font-mono);
+  border:1px solid var(--border);
+  background:var(--bg-panel);transition:all var(--transition);
+}
+.step.active{color:var(--text-primary)}
+.step.active .num{background:var(--accent);border-color:var(--accent);color:var(--bg-root)}
+.step.done{color:var(--text-secondary)}
+.step.done .num{background:var(--accent-dim);border-color:var(--accent);color:var(--accent)}
+.step-line{flex:1;height:1px;background:var(--border);margin:0 10px;min-width:16px;transition:background var(--transition)}
+.step-line.done{background:var(--accent)}
+
+/* Form Cards */
+.fcard{
+  background:var(--bg-panel);padding:22px 24px;margin-bottom:2px;
+  border:1px solid var(--border);
+}
+.fcard-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.fcard-title{font-size:12px;font-weight:700;color:var(--text-primary);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.5px}
+
+/* Fields */
+.field{margin-bottom:14px}
+.field:last-child{margin-bottom:0}
+.field label{
+  display:block;margin-bottom:5px;font-size:10px;font-weight:600;
+  color:var(--text-secondary);letter-spacing:0.3px;font-family:var(--font-ui);text-transform:uppercase;
+}
+.field input,.field select{
+  width:100%;height:36px;padding:0 12px;
+  background:var(--bg-input);border:1px solid var(--border);
+  font-family:var(--font-mono);font-size:12px;
+  outline:none;color:var(--text-primary);
+  transition:all var(--transition);
+}
+.field input:focus,.field select:focus{
+  border-color:var(--accent);box-shadow:inset 0 0 0 1px rgba(0,230,118,0.15);
+  background:var(--bg-root);
+}
+.field input::placeholder{color:var(--text-muted)}
+.field .sub{display:block;margin-top:4px;font-size:10px;color:var(--text-tertiary);line-height:1.4}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:800px){.field-row{grid-template-columns:1fr}}
+
+/* Buttons */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:5px;
+  height:32px;padding:0 14px;
+  background:var(--bg-elevated);color:var(--text-secondary);
+  font-family:var(--font-mono);font-size:11px;font-weight:600;white-space:nowrap;
+  border:1px solid var(--border);
+  transition:all var(--transition);text-transform:uppercase;letter-spacing:0.3px;
+}
+.btn:hover{background:var(--bg-hover);color:var(--text-primary);border-color:var(--border-active)}
+.btn.primary{
+  background:var(--accent);color:var(--bg-root);font-weight:700;border-color:var(--accent);
+}
+.btn.primary:hover{background:var(--accent);opacity:0.85}
+.btn.ghost{background:transparent;border-color:transparent}
+.btn.ghost:hover{background:var(--bg-elevated);border-color:var(--border)}
+.btn.danger{color:var(--danger)}
+.btn.danger:hover{background:rgba(255,82,82,0.08);border-color:rgba(255,82,82,0.2)}
+.btn.sm{height:26px;padding:0 10px;font-size:10px}
+
+/* Chips */
+.chips{display:flex;flex-wrap:wrap;gap:3px}
+.chip{
+  height:28px;padding:0 10px;
+  background:var(--bg-input);color:var(--text-tertiary);
+  font-family:var(--font-mono);font-size:10px;font-weight:600;
+  border:1px solid var(--border);
+  transition:all var(--transition);
+}
+.chip.on{background:var(--accent-dim);color:var(--accent);border-color:rgba(0,230,118,0.2)}
+
+/* Route Rows */
+.route-list{display:flex;flex-direction:column}
+.r-row{
+  display:flex;align-items:center;gap:6px;padding:8px 0;
+  border-bottom:1px solid var(--border);
+}
+.r-row:last-child{border-bottom:0}
+.r-row .r-type{
+  width:60px;height:32px;padding:0 5px;background:var(--bg-input);
+  border:1px solid var(--border);
+  font-size:11px;outline:none;flex-shrink:0;color:var(--text-primary);
+  font-family:var(--font-mono);
+}
+.r-row input,.r-row select{
+  height:32px;padding:0 8px;min-width:0;background:var(--bg-input);
+  border:1px solid var(--border);
+  font-family:var(--font-mono);font-size:11px;outline:none;color:var(--text-primary);
+  transition:all var(--transition);
+}
+.r-row input:focus,.r-row select:focus{border-color:var(--accent)}
+.r-arrow,.r-sep{color:var(--text-tertiary);font-size:12px;flex-shrink:0}
+.r-match{flex:1.2}
+.r-provider{width:100px;flex-shrink:0}
+.r-model{flex:1}
+.r-rem{
+  width:24px;height:24px;flex-shrink:0;display:grid;place-items:center;
+  color:var(--text-tertiary);font-size:14px;transition:all var(--transition);
+}
+.r-rem:hover{color:var(--danger);background:rgba(255,82,82,0.08)}
+
+/* Fallback */
+.fb-section{margin-bottom:14px}
+.fb-title{font-size:10px;font-weight:600;color:var(--text-secondary);margin-bottom:8px;font-family:var(--font-mono);text-transform:uppercase}
+.fb-row{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.fb-row input{
+  height:32px;padding:0 8px;min-width:0;background:var(--bg-input);
+  border:1px solid var(--border);
+  font-family:var(--font-mono);font-size:11px;outline:none;flex:1;color:var(--text-primary);
+}
+.fb-row input:focus{border-color:var(--accent)}
+
+/* Provider Cards (extra) */
+.pv-card{
+  background:var(--bg-elevated);padding:18px 20px;margin-bottom:1px;
+  border:1px solid var(--border);
+}
+.pv-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.pv-name{font-weight:600;font-size:12px;font-family:var(--font-mono)}
+.pv-grid-inner{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:800px){.pv-grid-inner{grid-template-columns:1fr}}
+
+/* Error Box */
+.err-box{
+  padding:12px 16px;margin-bottom:14px;
+  background:rgba(255,82,82,0.06);color:var(--danger);
+  font-size:12px;line-height:1.6;border:1px solid rgba(255,82,82,0.2);
+  font-family:var(--font-mono);
+}
+.err-box div+div{margin-top:4px}
+
+/* Model Preview */
+.model-preview{
+  margin-top:12px;padding:10px 12px;background:var(--bg-root);
+  font-family:var(--font-mono);font-size:10px;
+  color:var(--text-secondary);word-break:break-all;line-height:1.7;
+  border:1px solid var(--border);
+}
+
+/* Toast */
+.toast-wrap{position:fixed;bottom:20px;right:20px;z-index:60;display:flex;flex-direction:column;gap:6px}
+.toast{
+  max-width:380px;padding:10px 16px;
+  background:var(--bg-panel);border:1px solid var(--border);
+  color:var(--text-primary);font-size:12px;font-family:var(--font-mono);
+  animation:toast-in 0.2s ease;
+}
+.toast.err{color:var(--danger);border-color:rgba(255,82,82,0.3)}
+.toast.ok{color:var(--accent);border-color:rgba(0,230,118,0.3)}
+@keyframes toast-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+
+/* Features Card */
+#featuresCard{margin-bottom:1px}
+
+/* ═══════════════════════════════════════════════════════
+   Responsive
+   ═══════════════════════════════════════════════════════ */
+@media(max-width:800px){
+  .config-layout{flex-direction:column}
+  .config-sidebar{width:100%;max-height:160px;border-right:0;border-bottom:1px solid var(--border)}
+  .view-content,.config-main-body{padding:14px 12px 40px}
+  .status-metrics{gap:14px}
+  .topbar{padding:0 12px}
+  .metrics-grid{grid-template-columns:repeat(3,1fr)}
+}
+@media(max-width:600px){
+  .topbar-left{gap:12px}
+  .tab-btn{padding:0 10px;font-size:10px}
+  .server-name{display:none}
+  .metrics-grid{grid-template-columns:repeat(2,1fr)}
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- ═══ Top Bar ═══ -->
+  <nav class="topbar">
+    <div class="topbar-left">
+      <div class="logo">
+        <div class="logo-mark">λ</div>
+        Proxy
+      </div>
+      <div class="tabs">
+        <button class="tab-btn on" data-tab="dashboard" onclick="switchTab('dashboard')">仪表盘</button>
+        <button class="tab-btn" data-tab="config" onclick="switchTab('config')">配置管理</button>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <span class="server-name" id="topServerAddr">127.0.0.1:8787</span>
+      <span class="port-badge"><span class="live-dot"></span>ACTIVE</span>
+      <button class="btn ghost sm" onclick="forceRestart()" id="restartBtn" title="强制释放端口并重启 (watch 模式生效)">重启</button>
+    </div>
+  </nav>
+
+  <!-- ═══ Main ═══ -->
+  <div class="main-area">
+
+    <!-- ─── Dashboard ─── -->
+    <main class="view" id="dashboardView">
+      <div class="view-content">
+
+        <!-- Status Banner -->
+        <div class="status-banner" id="dashBanner">
+          <div class="status-left">
+            <span class="status-pulse" id="dashStatusDot"></span>
+            <span class="status-label" id="dashStatusLabel">加载中…</span>
+          </div>
+          <div class="status-metrics" id="dashMetrics"></div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="dash-grid" id="quickActions">
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title"><span class="icon">▸</span> 客户端环境变量</span>
+              <button class="btn sm" id="copyEnvBtn" onclick="copyEnv()">复制</button>
+            </div>
+            <div class="copy-block" id="envBlock">加载中…</div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title"><span class="icon">▸</span> curl 测试命令</span>
+              <button class="btn sm" id="copyCurlBtn" onclick="copyCurl()">复制</button>
+            </div>
+            <div class="copy-block" id="curlBlock">加载中…</div>
+          </div>
+        </div>
+
+        <!-- Metrics -->
+        <div class="card" id="metricsCard">
+          <div class="card-header">
+            <span class="card-title"><span class="icon">●</span> 实时指标</span>
+            <span style="font-size:10px;color:var(--text-tertiary);font-family:var(--font-mono)" id="metricsUpdated">轮询中…</span>
+          </div>
+          <div class="metrics-grid">
+            <div class="metric-cell"><div class="m-val" id="mTotal">-</div><div class="m-label">请求总数</div></div>
+            <div class="metric-cell"><div class="m-val" id="mActive">-</div><div class="m-label">活跃连接</div></div>
+            <div class="metric-cell"><div class="m-val" id="mAvgLatency">-</div><div class="m-label">平均延迟</div></div>
+            <div class="metric-cell"><div class="m-val" id="mP95">-</div><div class="m-label">P95 延迟</div></div>
+            <div class="metric-cell"><div class="m-val" id="mRPS">-</div><div class="m-label">请求速率</div></div>
+            <div class="metric-cell"><div class="m-val" id="mTPS">-</div><div class="m-label">Token 速率</div></div>
+          </div>
+          <div class="metrics-sub">
+            连接池 <span id="mPool">-</span>
+            &nbsp;·&nbsp; 错误 <span id="mErrors">-</span>
+            &nbsp;·&nbsp; 输入 <span id="mInputTokens">-</span>
+            &nbsp;·&nbsp; 输出 <span id="mOutputTokens">-</span>
+            &nbsp;·&nbsp; P99 <span id="mP99">-</span>
+          </div>
+        </div>
+
+        <!-- Features -->
+        <div class="card" id="featuresCard">
+          <div class="card-header">
+            <span class="card-title"><span class="icon">◆</span> 核心能力</span>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:2px;background:var(--border)">
+            <div style="text-align:center;padding:14px 10px;background:var(--bg-elevated)">
+              <div style="font-size:16px;margin-bottom:5px;opacity:0.8">🧩</div>
+              <div style="font-weight:600;font-size:11px;margin-bottom:3px;color:var(--text-primary);font-family:var(--font-mono)">子代理兼容</div>
+              <div style="font-size:10px;color:var(--text-tertiary);line-height:1.5">自动清洗 thinking 冲突</div>
+            </div>
+            <div style="text-align:center;padding:14px 10px;background:var(--bg-elevated)">
+              <div style="font-size:16px;margin-bottom:5px;opacity:0.8">⚡</div>
+              <div style="font-weight:600;font-size:11px;margin-bottom:3px;color:var(--text-primary);font-family:var(--font-mono)">并行 Agent</div>
+              <div style="font-size:10px;color:var(--text-tertiary);line-height:1.5">haiku/sonnet/opus 全支持</div>
+            </div>
+            <div style="text-align:center;padding:14px 10px;background:var(--bg-elevated)">
+              <div style="font-size:16px;margin-bottom:5px;opacity:0.8">🔀</div>
+              <div style="font-weight:600;font-size:11px;margin-bottom:3px;color:var(--text-primary);font-family:var(--font-mono)">智能路由</div>
+              <div style="font-size:10px;color:var(--text-tertiary);line-height:1.5">前缀匹配 + 容灾链路</div>
+            </div>
+          </div>
+          <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:10px;color:var(--text-tertiary);text-align:center;font-family:var(--font-mono)">
+            已验证 主代理 / 子代理 / 并行 Agent / 工具调用 / SSE 流式 — 全部通过
+          </div>
+        </div>
+
+        <!-- Route Table -->
+        <div class="card" id="routeTableCard">
+          <div class="card-header">
+            <span class="card-title"><span class="icon">▸</span> 路由映射</span>
+            <span style="font-size:10px;color:var(--text-tertiary);font-family:var(--font-mono)" id="routeCount"></span>
+          </div>
+          <div class="route-table-wrap">
+            <table class="route-table">
+              <thead><tr><th>类型</th><th>匹配规则</th><th>Provider</th><th>上游模型</th><th>Fallback</th></tr></thead>
+              <tbody id="routeTableBody"><tr><td colspan="5" style="text-align:center;color:var(--text-tertiary);padding:36px;font-family:var(--font-mono)">暂无路由数据</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Provider Cards -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title"><span class="icon">◆</span> 上游 Provider</span>
+            <span style="font-size:10px;color:var(--text-tertiary);font-family:var(--font-mono)" id="pvCount"></span>
+          </div>
+          <div class="pv-grid" id="dashProviderGrid">
+            <div style="text-align:center;color:var(--text-tertiary);padding:36px;font-family:var(--font-mono)">暂无 Provider 数据</div>
+          </div>
+        </div>
+
+        <!-- Empty -->
+        <div class="empty-state hidden" id="dashEmpty">
+          <div class="empty-icon">▣</div>
+          <h2>没有配置方案</h2>
+          <p>创建配置方案后，仪表盘将展示服务状态和运行指标。</p>
+          <button class="btn primary" onclick="switchTab('config');setTimeout(function(){createAndEdit()},200)">创建第一个方案</button>
+        </div>
+      </div>
+    </main>
+
+    <!-- ─── Config View ─── -->
+    <main class="view" id="configView" style="display:none">
+      <div class="config-layout">
+        <aside class="config-sidebar">
+          <div class="cs-header">配置方案</div>
+          <div class="profile-list" id="profileList"></div>
+          <div class="cs-footer">
+            <span class="status-text"><span class="status-dot"></span>运行中</span>
+          </div>
+        </aside>
+
+        <div class="config-main">
+          <div class="empty-state" id="emptyState">
+            <div class="empty-icon">▣</div>
+            <h2>没有配置方案</h2>
+            <p>创建配置方案以开始使用代理服务。</p>
+            <button class="btn primary" onclick="createAndEdit()">创建配置</button>
+          </div>
+
+          <div id="editor" class="hidden" style="display:flex;flex-direction:column;flex:1">
+            <div class="config-main-header">
+              <div style="display:flex;align-items:center;gap:14px">
+                <input id="profileName" style="font-size:16px;font-weight:700;border:0;outline:0;background:transparent;width:auto;min-width:120px;color:var(--text-primary);font-family:var(--font-mono)" placeholder="方案名称" oninput="markDirty()">
+                <span id="savedAt" style="font-size:10px;color:var(--text-tertiary);font-family:var(--font-mono)"></span>
+              </div>
+              <div style="display:flex;gap:6px">
+                <button class="btn" onclick="doSave()" id="saveBtn">保存</button>
+                <button class="btn primary" id="activateBtn" onclick="doActivate()">设为当前</button>
+              </div>
+            </div>
+
+            <div class="config-main-body">
+              <div id="modelDatalists"></div>
+              <div class="err-box hidden" id="errorBox"></div>
+
+              <div class="steps" id="stepBar">
+                <div class="step active" data-step="1" onclick="goStep(1)"><span class="num">1</span>上游连接</div>
+                <div class="step-line"></div>
+                <div class="step" data-step="2" onclick="goStep(2)"><span class="num">2</span>模型路由</div>
+                <div class="step-line"></div>
+                <div class="step" data-step="3" onclick="goStep(3)"><span class="num">3</span>高级</div>
+              </div>
+
+              <!-- Step 1 -->
+              <section class="fcard" id="step1">
+                <div class="fcard-header"><h2 class="fcard-title">上游连接</h2></div>
+                <div class="field">
+                  <label>上游地址</label>
+                  <div style="display:flex;gap:8px">
+                    <select id="pvBaseUrlSelect" onchange="onBaseUrlSelect()" style="flex:1;height:36px;padding:0 12px;background:var(--bg-input);border:1px solid var(--border);font-family:var(--font-mono);font-size:12px;outline:none;color:var(--text-primary)">
+                      <option value="">自定义…</option>
+                      <option value="https://api.deepseek.com/anthropic">DeepSeek (api.deepseek.com/anthropic)</option>
+                      <option value="http://127.0.0.1:3000">New API (localhost:3000)</option>
+                      <option value="https://api.openai.com/v1">OpenAI (api.openai.com/v1)</option>
+                    </select>
+                    <input id="pvBaseUrl" placeholder="https://your-upstream.com/anthropic" oninput="onCustomUrlInput()" style="flex:2">
+                  </div>
+                </div>
+                <div class="field">
+                  <label>API Key</label>
+                  <input id="pvApiKey" type="text" placeholder="sk-xxx" oninput="markDirty()" autocomplete="off">
+                  <span class="sub">Key 直接存储在 config-store.json，注意文件权限</span>
+                </div>
+                <div class="field">
+                  <label>Provider 名称</label>
+                  <input id="pvName" placeholder="自动从 URL 提取" oninput="markDirty()">
+                  <span class="sub">路由中引用此 Provider 时使用的名称，留空则自动从地址提取</span>
+                </div>
+                <div class="btn-row">
+                  <button class="btn primary" onclick="fetchMainModels()">获取模型列表</button>
+                  <span id="pvModelCount" style="font-size:11px;color:var(--text-tertiary);font-family:var(--font-mono)"></span>
+                </div>
+                <div class="model-preview hidden" id="pvModelPreview"></div>
+
+                <div style="margin-top:20px;padding-top:18px;border-top:1px solid var(--border)">
+                  <div class="field-row">
+                    <div class="field"><label>Models URL (可选)</label><input id="pvModelsUrl" placeholder="自动推断" oninput="markDirty()"></div>
+                    <div class="field"><label>Timeout (ms)</label><input id="pvTimeout" type="number" placeholder="120000" oninput="markDirty()"></div>
+                  </div>
+                  <div class="field"><label>Content Blocks</label><div class="chips" id="pvChips"></div></div>
+                </div>
+              </section>
+
+              <!-- Step 2 -->
+              <section class="fcard hidden" id="step2">
+                <div class="fcard-header"><h2 class="fcard-title">模型路由</h2></div>
+                <div style="margin-bottom:12px">
+                  <span style="font-size:10px;color:var(--text-tertiary);margin-right:6px;font-family:var(--font-mono)">快速添加：</span>
+                  <button class="btn ghost sm" onclick="addRoutePreset('claude-sonnet','deepseek-v4-pro')">Claude Sonnet</button>
+                  <button class="btn ghost sm" onclick="addRoutePreset('claude-opus','deepseek-v4-pro')">Claude Opus</button>
+                  <button class="btn ghost sm" onclick="addRoutePreset('claude-haiku','deepseek-v4-pro')">Claude Haiku</button>
+                  <button class="btn ghost sm" onclick="addRoute()">自定义</button>
+                </div>
+                <div class="route-list" id="routeList"></div>
+              </section>
+
+              <!-- Step 3 -->
+              <section class="fcard hidden" id="step3">
+                <div class="fcard-header"><h2 class="fcard-title">服务器设置</h2></div>
+                <div class="field-row" style="margin-bottom:14px">
+                  <div class="field"><label>Host</label><input id="svHost" placeholder="127.0.0.1" oninput="markDirty()"></div>
+                  <div class="field"><label>Port</label><input id="svPort" type="number" placeholder="8787" oninput="markDirty()"></div>
+                </div>
+                <div class="field">
+                  <label>本地鉴权密码 (可选)</label>
+                  <input id="svAuth" type="text" placeholder="不填则不校验" oninput="markDirty()" autocomplete="off">
+                  <span class="sub">Claude Code 客户端的 ANTHROPIC_API_KEY 需填相同值</span>
+                </div>
+
+                <div style="margin-top:20px;padding-top:18px;border-top:1px solid var(--border)">
+                  <div class="fcard-header">
+                    <h2 class="fcard-title">其他 Provider</h2>
+                    <button class="btn ghost sm" onclick="addProviderCard()">+ 添加</button>
+                  </div>
+                  <div id="providerCards"></div>
+                </div>
+
+                <div style="margin-top:20px;padding-top:18px;border-top:1px solid var(--border)">
+                  <div class="fcard-header"><h2 class="fcard-title">路由 Fallback</h2></div>
+                  <div id="fallbackEditor"></div>
+                </div>
+              </section>
+
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
+                <button class="btn ghost" id="prevBtn" onclick="goStep(currentStep-1)" style="visibility:hidden">← 上一步</button>
+                <span style="font-size:11px;color:var(--text-tertiary);font-family:var(--font-mono)">步骤 <span id="stepNum">1</span>/3</span>
+                <button class="btn primary" id="nextBtn" onclick="goStep(currentStep+1)">下一步 →</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script>
+/* ═══════════════════════════════════════════════════════
+   State & Constants
+   ═══════════════════════════════════════════════════════ */
+var CB=['text','tool_use','tool_result','thinking','image','document','mcp_tool_use','mcp_tool_result'];
+var PROVIDER_TEMPLATES={
+  'https://api.deepseek.com/anthropic':{name:'deepseek',modelsUrl:'https://api.deepseek.com/models'},
+  'http://127.0.0.1:3000':{name:'newapi',modelsUrl:''},
+  'https://api.openai.com/v1':{name:'openai',modelsUrl:''}
+};
+var currentStep=1;
+var currentTab='dashboard';
+var state={profiles:[],activeProfileId:null,currentId:null,dirty:false,modelsByProvider:{}};
+
+/* ═══════════════════════════════════════════════════════
+   Helpers
+   ═══════════════════════════════════════════════════════ */
+function $(id){return document.getElementById(id)}
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+async function api(method,url,body){
+  var o={method:method,headers:{'Content-Type':'application/json'}};
+  if(body!==undefined)o.body=JSON.stringify(body);
+  var r=await fetch(url,o);
+  var d=await r.json().catch(function(){return{}});
+  if(!r.ok||d.ok===false)throw new Error(d.error||'HTTP '+r.status);
+  return d;
+}
+function toast(m,t){
+  var el=document.createElement('div');
+  el.className='toast '+(t==='err'?'err':'ok');el.textContent=m;
+  $('toastWrap').appendChild(el);
+  setTimeout(function(){el.remove()},2800);
+}
+
+/* ═══════════════════════════════════════════════════════
+   Tab Switching
+   ═══════════════════════════════════════════════════════ */
+function switchTab(tab){
+  currentTab=tab;
+  document.querySelectorAll('.tab-btn').forEach(function(b){b.classList.toggle('on',b.dataset.tab===tab)});
+  $('dashboardView').style.display=tab==='dashboard'?'flex':'none';
+  $('configView').style.display=tab==='config'?'flex':'none';
+  if(tab==='dashboard')renderDashboard();
+}
+
+/* ═══════════════════════════════════════════════════════
+   Dashboard Rendering
+   ═══════════════════════════════════════════════════════ */
+function getActiveConfig(){
+  if(!state.activeProfileId)return null;
+  var p=state.profiles.find(function(x){return x.id===state.activeProfileId});
+  return p?p.config:null;
+}
+
+function renderDashboard(){
+  var cfg=getActiveConfig();
+  var hasActive=!!cfg;
+
+  if(hasActive){
+    $('dashStatusDot').className='status-pulse';
+    $('dashStatusLabel').innerHTML='服务运行中 <small>'+esc(cfg.server.host)+':'+cfg.server.port+'</small>';
+    $('topServerAddr').textContent=cfg.server.host+':'+cfg.server.port;
+    var pname=state.profiles.find(function(x){return x.id===state.activeProfileId});
+    var routeCount=cfg.routes.length;
+    var providerCount=Object.keys(cfg.providers).length;
+    var authOn=!!(cfg.server.authToken);
+    $('dashMetrics').innerHTML=
+      '<div class="metric"><div class="val">'+esc(pname?pname.name:'-')+'</div><div class="lbl">当前方案</div></div>'+
+      '<div class="metric"><div class="val">'+providerCount+'</div><div class="lbl">Provider</div></div>'+
+      '<div class="metric"><div class="val">'+routeCount+'</div><div class="lbl">路由规则</div></div>'+
+      '<div class="metric"><div class="val">'+(authOn?'已启用':'未启用')+'</div><div class="lbl">认证</div></div>';
+    $('dashBanner').style.display='';
+    $('dashEmpty').classList.add('hidden');
+  }else{
+    $('dashStatusDot').className='status-pulse off';
+    $('dashStatusLabel').textContent='未激活方案';
+    $('dashMetrics').innerHTML='<span style="color:var(--text-tertiary);font-size:13px">前往「配置管理」创建并激活方案</span>';
+    $('dashBanner').style.display='';
+    renderEmptyDashboard();
+    return;
+  }
+
+  var host=cfg.server.host,port=cfg.server.port,key=cfg.server.authToken||'your-auth-token-here';
+  $('envBlock').textContent=
+    'export ANTHROPIC_BASE_URL=http://'+host+':'+port+'\n'+
+    (cfg.server.authToken?'export ANTHROPIC_API_KEY='+key:'# export ANTHROPIC_API_KEY=(无需鉴权)');
+  var firstModel=cfg.routes.length?(cfg.routes[0].match.exact||cfg.routes[0].match.prefix||'{model}'):'{model}';
+  var curlCmd='curl -X POST http://'+host+':'+port+'/v1/messages \\\n'+
+    '  -H "Content-Type: application/json" \\\n'+
+    (cfg.server.authToken?'  -H "x-api-key: '+key+'" \\\n':'')+
+    '  -d \'{\n'+
+    '    "model": "'+firstModel+'",\n'+
+    '    "max_tokens": 100,\n'+
+    '    "messages": [{"role": "user", "content": "hello"}]\n'+
+    '  }\'';
+  $('curlBlock').textContent=curlCmd;
+  resetCopyBtn('copyEnvBtn');resetCopyBtn('copyCurlBtn');
+
+  $('routeCount').textContent=cfg.routes.length+' 条规则';
+  if(cfg.routes.length){
+    var rows='';
+    cfg.routes.forEach(function(r){
+      var type=r.match&&r.match.exact!==undefined?'exact':'prefix';
+      var val=r.match?(r.match.exact||r.match.prefix||''):'';
+      var fbs=(r.fallback||[]);
+      var fbHtml='-';
+      if(fbs.length){
+        fbHtml='<span class="fb-pop" data-tip="'+esc(fbs.map(function(f){return f.provider+'/'+f.upstreamModel}).join(', '))+'">'+fbs.length+' 个</span>';
+      }
+      rows+='<tr>'+
+        '<td><span class="r-type-badge '+type+'">'+type+'</span></td>'+
+        '<td>'+esc(val)+'</td>'+
+        '<td>'+esc(r.provider)+'</td>'+
+        '<td>'+esc(r.upstreamModel)+'</td>'+
+        '<td>'+fbHtml+'</td></tr>';
+    });
+    $('routeTableBody').innerHTML=rows;
+    $('routeTableCard').style.display='';
+  }else{
+    $('routeTableBody').innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--text-tertiary);padding:36px">暂无路由数据</td></tr>';
+    $('routeTableCard').style.display='';
+  }
+
+  var pvNames=Object.keys(cfg.providers);
+  $('pvCount').textContent=pvNames.length+' 个';
+  if(pvNames.length){
+    var pvHtml='';
+    pvNames.forEach(function(name){
+      var p=cfg.providers[name];
+      var baseUrl=p.baseUrl||'(环境变量)';
+      var blocks=(p.capabilities&&p.capabilities.contentBlocks)||[];
+      pvHtml+='<div class="pv-dash-card" data-pv="'+esc(name)+'">'+
+        '<div class="pv-dash-name"><span class="conn-dot unknown"></span>'+esc(name)+'</div>'+
+        '<div class="pv-dash-meta">Base URL: <span>'+esc(baseUrl)+'</span></div>'+
+        '<div class="pv-dash-meta">Timeout: <span>'+(p.timeoutMs||120000)+'ms</span></div>'+
+        '<div class="pv-dash-meta">Blocks: <span>'+blocks.join(', ')+'</span></div>'+
+        '<div class="pv-dash-footer">'+
+          '<button class="test-btn" onclick="testDashProvider(\''+esc(name)+'\')">测试连接</button>'+
+          '<span class="model-count"></span>'+
+        '</div></div>';
+    });
+    $('dashProviderGrid').innerHTML=pvHtml;
+  }else{
+    $('dashProviderGrid').innerHTML='<div style="text-align:center;color:var(--text-tertiary);padding:36px">暂无 Provider 数据</div>';
+  }
+
+  $('quickActions').style.display='';
+  $('routeTableCard').style.display='';
+}
+
+function renderEmptyDashboard(){
+  $('quickActions').style.display='none';
+  $('routeTableCard').style.display='none';
+  $('dashProviderGrid').parentElement.style.display='none';
+  $('dashEmpty').classList.remove('hidden');
+}
+
+/* ── Dashboard: provider test ── */
+async function testDashProvider(pvName){
+  var cfg=getActiveConfig();
+  if(!cfg)return;
+  var p=cfg.providers[pvName];
+  if(!p)return;
+  var card=document.querySelector('.pv-dash-card[data-pv="'+pvName.replace(/"/g,'\\"')+'"]');
+  if(!card)return;
+  var dot=card.querySelector('.conn-dot');
+  var btn=card.querySelector('.test-btn');
+  var cnt=card.querySelector('.model-count');
+
+  dot.className='conn-dot testing';
+  btn.textContent='测试中…';btn.classList.add('testing');
+  cnt.textContent='';
+
+  try{
+    var r=await api('POST','/api/admin/upstream-models',{provider:p});
+    dot.className='conn-dot ok';
+    btn.textContent='测试连接';btn.classList.remove('testing');
+    cnt.textContent=(r.models||[]).length+' 个模型';
+  }catch(e){
+    dot.className='conn-dot fail';
+    btn.textContent='测试连接';btn.classList.remove('testing');
+    cnt.textContent='失败';cnt.style.color='var(--danger)';
+  }
+}
+
+/* ── Dashboard: copy ── */
+function copyEnv(){copyToClipboard($('envBlock').textContent,'copyEnvBtn')}
+function copyCurl(){copyToClipboard($('curlBlock').textContent,'copyCurlBtn')}
+function copyToClipboard(text,btnId){
+  navigator.clipboard.writeText(text).then(function(){
+    var btn=$(btnId);
+    btn.textContent='已复制';btn.classList.add('copied');
+    setTimeout(function(){resetCopyBtn(btnId)},1800);
+    toast('已复制到剪贴板','ok');
+  }).catch(function(){toast('复制失败','err')});
+}
+function resetCopyBtn(btnId){
+  var btn=$(btnId);
+  btn.textContent='复制';btn.classList.remove('copied');
+}
+
+/* ═══════════════════════════════════════════════════════
+   Profile Loading
+   ═══════════════════════════════════════════════════════ */
+async function loadProfiles(){
+  try{
+    var d=await api('GET','/api/admin/profiles');
+    state.profiles=d.profiles||[];
+    state.activeProfileId=d.activeProfileId||null;
+    renderSidebar();
+    if(currentTab==='dashboard')renderDashboard();
+    if(!state.currentId&&state.profiles.length){
+      await selectProfile(state.activeProfileId||state.profiles[0].id);
+    }else if(state.currentId&&!state.profiles.some(function(x){return x.id===state.currentId})){
+      state.currentId=null;showEmpty();
+    }else if(!state.currentId&&!state.profiles.length){
+      showEmpty();
+    }
+  }catch(e){toast(e.message||'读取配置失败','err')}
+}
+
+/* ═══════════════════════════════════════════════════════
+   Sidebar
+   ═══════════════════════════════════════════════════════ */
+function renderSidebar(){
+  var h='';
+  state.profiles.forEach(function(p){
+    var isActive=p.id===state.activeProfileId;
+    var isSel=p.id===state.currentId;
+    h+='<div class="profile-item'+(isSel?' current':'')+(isActive?' active':'')
+      +'" onclick="selectProfile(\''+p.id+'\')">';
+    h+='<div class="profile-name">'+esc(p.name)+(isActive?' <span class="badge">当前</span>':'')+'</div>';
+    h+='<div class="profile-meta">'+(p.config&&p.config.routes?p.config.routes.length:0)+' 条路由</div>';
+    h+='<div class="profile-actions">';
+    if(!isActive)h+='<button class="btn ghost sm" onclick="event.stopPropagation();activateProfile(\''+p.id+'\')">设为当前</button>';
+    h+='<button class="btn ghost sm danger" onclick="event.stopPropagation();deleteProfile(\''+p.id+'\')">删除</button>';
+    h+='</div></div>';
+  });
+  if(!state.profiles.length)h='<div style="padding:20px;text-align:center;color:var(--text-tertiary);font-size:12px">暂无方案</div>';
+  h+='<div style="padding:8px 10px"><button class="btn ghost" style="width:100%" onclick="createAndEdit()">+ 新建</button></div>';
+  $('profileList').innerHTML=h;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Config View — Show/Hide
+   ═══════════════════════════════════════════════════════ */
+function showEmpty(){
+  state.currentId=null;state.dirty=false;
+  $('emptyState').classList.remove('hidden');
+  $('editor').classList.add('hidden');
+}
+function showEditor(){
+  $('emptyState').classList.add('hidden');
+  $('editor').classList.remove('hidden');
+  $('editor').style.display='flex';
+}
+
+/* ═══════════════════════════════════════════════════════
+   Config View — Profile CRUD
+   ═══════════════════════════════════════════════════════ */
+async function selectProfile(id){
+  var p=state.profiles.find(function(x){return x.id===id});
+  if(!p){await loadProfiles();p=state.profiles.find(function(x){return x.id===id});if(!p)return}
+  state.currentId=id;state.dirty=false;$('saveBtn').textContent='保存';setErrors([]);
+  showEditor();renderSidebar();
+  $('profileName').value=p.name;
+  $('savedAt').textContent='更新于 '+new Date(p.updatedAt).toLocaleString('zh-CN');
+  var c=p.config||emptyConfig();
+  $('svHost').value=(c.server&&c.server.host)||'127.0.0.1';
+  $('svPort').value=(c.server&&c.server.port)||8787;
+  $('svAuth').value=(c.server&&c.server.authToken)||'';
+  loadMainProvider(c.providers||{});
+  renderRoutes(c.routes||[]);
+  renderFallbackEditor(c.routes||[]);
+  renderExtraProviders(c.providers||{});
+  currentStep=1;updateStepUI();
+}
+function createAndEdit(){
+  var names=state.profiles.map(function(x){return x.name});
+  var name='新配置',i=1;
+  while(names.indexOf(name)>=0){i++;name='新配置 '+i}
+  createProfile(name,emptyConfig());
+}
+async function createProfile(name,config){
+  try{
+    var r=await api('POST','/api/admin/profiles',{name:name,config:config});
+    await loadProfiles();
+    await selectProfile(r.profile.id);
+    toast('已创建配置','ok');
+  }catch(e){toast(e.message||'创建失败','err')}
+}
+async function deleteProfile(id){
+  if(!confirm('确定删除此方案？'))return;
+  try{
+    await api('DELETE','/api/admin/profiles/'+id);
+    if(state.currentId===id){state.currentId=null;showEmpty()}
+    await loadProfiles();
+    toast('已删除','ok');
+  }catch(e){toast(e.message||'删除失败','err')}
+}
+async function activateProfile(id){
+  try{await api('POST','/api/admin/profiles/activate',{id:id});await loadProfiles();toast('已设为当前，重启后生效','ok')}
+  catch(e){toast(e.message||'激活失败','err')}
+}
+
+/* ═══════════════════════════════════════════════════════
+   Config View — Form Logic
+   ═══════════════════════════════════════════════════════ */
+function emptyConfig(){return{server:{host:'127.0.0.1',port:8787},providers:{},routes:[]}}
+function markDirty(){if(!state.currentId||state.dirty)return;state.dirty=true;$('saveBtn').textContent='保存 *'}
+function onBaseUrlSelect(){
+  var url=$('pvBaseUrlSelect').value;
+  if(!url)return;
+  $('pvBaseUrl').value=url;
+  var t=PROVIDER_TEMPLATES[url];
+  if(t){$('pvName').value=t.name||'';$('pvModelsUrl').value=t.modelsUrl||''}
+  markDirty();
+}
+function onCustomUrlInput(){
+  var url=$('pvBaseUrl').value.trim();
+  if(!$('pvName').value){try{var h=new URL(url).hostname;var p=h.split('.')[0];$('pvName').value=p||''}catch(_){}}
+  markDirty();
+}
+
+function loadMainProvider(providers){
+  var entries=Object.entries(providers);
+  if(!$('pvChips').children.length){
+    $('pvChips').innerHTML=CB.map(function(b){return '<button class="chip" data-block="'+b+'" onclick="this.classList.toggle(\'on\');markDirty()">'+b+'</button>'}).join('');
+  }
+  if(!entries.length){
+    $('pvName').value='';$('pvApiKey').value='';$('pvBaseUrl').value='';
+    $('pvModelsUrl').value='';$('pvTimeout').value='120000';setMainChips([]);
+    return;
+  }
+  var first=entries[0],p=first[1];
+  $('pvName').value=first[0];
+  $('pvApiKey').value=p.apiKey||'';
+  $('pvBaseUrl').value=p.baseUrl||'';
+  $('pvModelsUrl').value=p.modelsUrl||'';
+  $('pvTimeout').value=p.timeoutMs||120000;
+  setMainChips((p.capabilities&&p.capabilities.contentBlocks)||[]);
+}
+function setMainChips(blocks){
+  $('pvChips').querySelectorAll('.chip').forEach(function(c){c.classList.toggle('on',blocks.indexOf(c.dataset.block)>=0)});
+}
+function collectMainProvider(){
+  var blocks=[];
+  $('pvChips').querySelectorAll('.chip.on').forEach(function(c){blocks.push(c.dataset.block)});
+  var timeout=parseInt($('pvTimeout').value,10)||120000;
+  var modelsUrl=$('pvModelsUrl').value.trim()||undefined;
+  var p={type:'anthropic',apiKey:$('pvApiKey').value.trim()||undefined,timeoutMs:timeout,capabilities:{contentBlocks:blocks}};
+  if(modelsUrl)p.modelsUrl=modelsUrl;
+  var url=$('pvBaseUrl').value.trim();
+  if(url)p.baseUrl=url;
+  return p;
+}
+
+function renderExtraProviders(providers){
+  var entries=Object.entries(providers);
+  var mainName=$('pvName').value.trim()||'';
+  var extra=entries.filter(function(e){return e[0]!==mainName});
+  if(!extra.length){$('providerCards').innerHTML='<div style="color:var(--text-tertiary);font-size:13px;padding:8px 0">暂无额外 Provider</div>';return}
+  $('providerCards').innerHTML=extra.map(function(e){return providerCardHtml(e[0],e[1])}).join('');
+}
+function providerCardHtml(name,p){
+  var blocks=(p.capabilities&&p.capabilities.contentBlocks)||[];
+  var h='<div class="pv-card"><div class="pv-head"><span class="pv-name">'+esc(name)+'</span><div style="display:flex;gap:5px">';
+  h+='<button class="btn ghost sm" onclick="fetchExtraModels(this)">获取模型</button>';
+  h+='<button class="btn ghost sm danger" onclick="this.closest(\'.pv-card\').remove();markDirty()">移除</button></div></div>';
+  h+='<div class="pv-grid-inner">';
+  h+='<div class="field"><label>Name</label><input class="pvcard-name" value="'+esc(name)+'" oninput="markDirty()"></div>';
+  h+='<div class="field"><label>API Key</label><input type="text" class="pvcard-key" value="'+esc(p.apiKey||'')+'" oninput="markDirty()" autocomplete="off"></div>';
+  h+='<div class="field"><label>Base URL</label><input class="pvcard-url" value="'+esc(p.baseUrl||'')+'" oninput="markDirty()"></div>';
+  h+='<div class="field"><label>Models URL</label><input value="'+esc(p.modelsUrl||'')+'" oninput="markDirty()"></div>';
+  h+='<div class="field"><label>Timeout MS</label><input type="number" value="'+(p.timeoutMs||120000)+'" oninput="markDirty()"></div>';
+  h+='</div><div class="field" style="margin-top:14px"><label>Content Blocks</label><div class="chips">';
+  CB.forEach(function(b){h+='<button class="chip'+(blocks.indexOf(b)>=0?' on':'')+'" onclick="this.classList.toggle(\'on\');markDirty()">'+b+'</button>'});
+  h+='</div></div><div class="field" style="margin-top:14px"><div class="model-preview hidden" data-mp></div></div></div>';
+  return h;
+}
+function addProviderCard(){
+  var existing=[$('pvName').value.trim()];
+  document.querySelectorAll('.pvcard-name').forEach(function(inp){var n=inp.value.trim();if(n)existing.push(n)});
+  var name='provider',i=1;
+  while(existing.indexOf(name)>=0){i++;name='provider'+i}
+  var cards=$('providerCards');
+  var ph=cards.querySelector('div[style]');
+  if(ph&&!cards.querySelector('.pv-card'))ph.remove();
+  cards.insertAdjacentHTML('beforeend',providerCardHtml(name,{type:'anthropic',baseUrl:'',apiKey:'',timeoutMs:120000,capabilities:{contentBlocks:['text','tool_use','tool_result','thinking']}}));
+  markDirty();
+}
+
+/* ── Steps ── */
+function goStep(n){
+  if(n<1||n>3)return;
+  if(n>currentStep){
+    if(currentStep===1&&!canProceedFromStep1()){toast('请先填写上游地址和 API Key','err');return}
+    if(currentStep===2&&!canProceedFromStep2()){toast('请至少添加一条路由规则','err');return}
+  }
+  currentStep=n;updateStepUI();
+}
+function canProceedFromStep1(){return $('pvBaseUrl').value.trim()&&$('pvApiKey').value.trim()}
+function canProceedFromStep2(){return document.querySelectorAll('.r-row').length>0}
+function updateStepUI(){
+  $('step1').classList.toggle('hidden',currentStep!==1);
+  $('step2').classList.toggle('hidden',currentStep!==2);
+  $('step3').classList.toggle('hidden',currentStep!==3);
+  $('stepNum').textContent=currentStep;
+  $('prevBtn').style.visibility=currentStep===1?'hidden':'visible';
+  $('nextBtn').style.visibility=currentStep===3?'hidden':'visible';
+  var steps=document.querySelectorAll('.step');
+  var lines=document.querySelectorAll('.step-line');
+  steps.forEach(function(s,i){
+    s.classList.remove('active','done');
+    if(i+1<currentStep)s.classList.add('done');
+    if(i+1===currentStep)s.classList.add('active');
+  });
+  lines.forEach(function(l,i){l.classList.toggle('done',i+1<currentStep)});
+}
+
+/* ── Model fetching ── */
+async function fetchMainModels(){
+  var name=$('pvName').value.trim();
+  if(!name){toast('请先填写 Provider 名称','err');return}
+  var p=collectMainProvider();
+  await doFetchModels(name,p,$('pvModelPreview'));
+}
+async function fetchExtraModels(btn){
+  var card=btn.closest('.pv-card');
+  var name=card.querySelector('.pvcard-name').value.trim();
+  if(!name){toast('请先填写 Provider 名称','err');return}
+  var p=collectExtraProvider(card);
+  await doFetchModels(name,p,card.querySelector('[data-mp]'));
+}
+async function doFetchModels(name,provider,previewEl){
+  if(!provider.apiKey){toast('请先填写 API Key','err');return}
+  try{
+    var r=await api('POST','/api/admin/upstream-models',{provider:provider});
+    state.modelsByProvider[name]=r.models||[];
+    renderModelDatalists();updateRouteLists();
+    if(previewEl){
+      previewEl.classList.remove('hidden');
+      var cnt=state.modelsByProvider[name].length;
+      previewEl.innerHTML=state.modelsByProvider[name].slice(0,15).map(esc).join(' · ')+(cnt>15?' · …':'');
+      $('pvModelCount').textContent=cnt?cnt+' 个模型可用':'';
+    }
+    toast(cnt?'已获取 '+cnt+' 个模型':'上游无可用模型','ok');
+  }catch(e){toast(e.message,'err')}
+}
+function collectExtraProvider(card){
+  var inputs=card.querySelectorAll('input');
+  var apiKey='',baseUrl='',modelsUrl='',timeoutMs=120000;
+  if(inputs.length>=2)apiKey=inputs[1].value.trim();
+  if(inputs.length>=3)baseUrl=inputs[2].value.trim();
+  if(inputs.length>=4){var mu=inputs[3].value.trim();if(mu)modelsUrl=mu}
+  if(inputs.length>=5)timeoutMs=parseInt(inputs[4].value,10)||120000;
+  var blocks=[];card.querySelectorAll('.chip.on').forEach(function(c){blocks.push(c.textContent)});
+  var p={type:'anthropic',apiKey:apiKey,timeoutMs:timeoutMs,capabilities:{contentBlocks:blocks}};
+  if(baseUrl)p.baseUrl=baseUrl;
+  if(modelsUrl)p.modelsUrl=modelsUrl;
+  return p;
+}
+function renderModelDatalists(){
+  var h='';
+  Object.keys(state.modelsByProvider).forEach(function(pv){
+    h+='<datalist id="'+modelListId(pv)+'">';
+    state.modelsByProvider[pv].forEach(function(m){h+='<option value="'+esc(m)+'">'});
+    h+='</datalist>';
+  });
+  $('modelDatalists').innerHTML=h;
+}
+function updateRouteLists(){
+  var routes=[];
+  document.querySelectorAll('.r-row').forEach(function(row){
+    var val=row.querySelector('.r-value').value.trim();
+    var pv=row.querySelector('.r-provider').value.trim();
+    var modelEl=row.querySelector('.r-model');
+    var model=modelEl?(modelEl.tagName==='SELECT'?modelEl.value:modelEl.value.trim()):'';
+    var type=row.querySelector('.r-type').value;
+    var match=type==='exact'?{exact:val}:{prefix:val};
+    routes.push({match:match,provider:pv,upstreamModel:model,fallback:[]});
+  });
+  renderRoutes(routes);
+}
+function modelListId(pv){return 'ml-'+pv.replace(/[^a-zA-Z0-9_-]/g,'_')}
+
+/* ── Routes ── */
+function renderRoutes(routes){
+  if(!routes.length){$('routeList').innerHTML='<div style="padding:10px 0;color:var(--text-tertiary);font-size:13px">暂无路由，点击"+ 添加"创建。</div>';return}
+  $('routeList').innerHTML=routes.map(function(r){return routeRowHtml(r)}).join('');
+}
+function routeRowHtml(r){
+  var type=r.match&&r.match.exact!==undefined?'exact':'prefix';
+  var val=r.match?(r.match.exact||r.match.prefix||''):'';
+  var models=state.modelsByProvider[r.provider]||[];
+  var modelSelect='';
+  if(models.length){
+    modelSelect='<select class="r-model" onchange="markDirty()"><option value="">选择模型…</option>';
+    models.forEach(function(m){modelSelect+='<option value="'+esc(m)+'"'+(m===r.upstreamModel?' selected':'')+'>'+esc(m)+'</option>'});
+    modelSelect+='</select>';
+  }else{
+    modelSelect='<input class="r-model" value="'+esc(r.upstreamModel||'')+'" placeholder="先获取模型列表" oninput="markDirty()">';
+  }
+  return '<div class="r-row">'
+    +'<select class="r-type" onchange="markDirty()"><option value="prefix"'+(type==='prefix'?' selected':'')+'>前缀</option><option value="exact"'+(type==='exact'?' selected':'')+'>精确</option></select>'
+    +'<input class="r-match r-value" value="'+esc(val)+'" placeholder="claude-sonnet" oninput="markDirty()">'
+    +'<span class="r-arrow">→</span>'
+    +'<input class="r-provider" value="'+esc(r.provider||'')+'" placeholder="provider" onchange="onRouteProviderInput(this)">'
+    +'<span class="r-sep">/</span>'
+    +modelSelect
+    +'<button class="r-rem" onclick="removeRoute(this)" title="移除">×</button></div>';
+}
+function onRouteProviderInput(inp){markDirty();updateRouteLists()}
+function addRoutePreset(matchPattern,upstreamModel){
+  var list=$('routeList');if(!list.querySelector('.r-row'))list.innerHTML='';
+  var pv=$('pvName').value.trim();
+  var models=state.modelsByProvider[pv]||[];
+  var modelHtml='';
+  if(models.length){
+    modelHtml='<select class="r-model" onchange="markDirty()"><option value="">选择模型…</option>';
+    models.forEach(function(m){modelHtml+='<option value="'+esc(m)+'"'+(m===upstreamModel?' selected':'')+'>'+esc(m)+'</option>'});
+    modelHtml+='</select>';
+  }else{modelHtml='<input class="r-model" value="'+esc(upstreamModel)+'" placeholder="model" oninput="markDirty()">'}
+  list.insertAdjacentHTML('beforeend',
+    '<div class="r-row"><select class="r-type" onchange="markDirty()"><option value="prefix" selected>前缀</option><option value="exact">精确</option></select>'
+    +'<input class="r-match r-value" value="'+esc(matchPattern)+'" oninput="markDirty()">'
+    +'<span class="r-arrow">→</span>'
+    +'<input class="r-provider" value="'+esc(pv)+'" placeholder="provider" onchange="onRouteProviderInput(this)">'
+    +'<span class="r-sep">/</span>'+modelHtml
+    +'<button class="r-rem" onclick="removeRoute(this)" title="移除">×</button></div>');
+  markDirty();
+}
+function addRoute(){addRoutePreset('','')}
+function removeRoute(btn){btn.closest('.r-row').remove();markDirty()}
+
+/* ── Fallback ── */
+function renderFallbackEditor(routes){
+  if(!routes.length){$('fallbackEditor').innerHTML='<div style="color:var(--text-tertiary);font-size:13px;padding:8px 0">暂无路由规则</div>';return}
+  var h='';routes.forEach(function(r,i){
+    var fbs=r.fallback||[];
+    var label=(r.match&&(r.match.prefix||r.match.exact))||'路由 '+(i+1);
+    h+='<div class="fb-section"><div class="fb-title">'+esc(label)+'</div>';
+    fbs.forEach(function(fb){h+=fallbackRowHtml(fb)});
+    h+='<button class="btn ghost sm" onclick="addFallbackRow(this)">+ 添加</button></div>';
+  });
+  $('fallbackEditor').innerHTML=h;
+}
+function fallbackRowHtml(fb){
+  return '<div class="fb-row"><input value="'+esc(fb&&fb.provider||'')+'" placeholder="provider" oninput="markDirty()">'
+    +'<input value="'+esc(fb&&fb.upstreamModel||'')+'" placeholder="model" oninput="markDirty()">'
+    +'<button class="btn ghost sm danger" onclick="this.closest(\'.fb-row\').remove();markDirty()">×</button></div>';
+}
+function addFallbackRow(btn){btn.insertAdjacentHTML('beforebegin',fallbackRowHtml({provider:'',upstreamModel:''}));markDirty()}
+
+/* ── Config collection ── */
+function collectConfig(){
+  var providers={};
+  var mainName=$('pvName').value.trim();
+  if(!mainName){setErrors(['请填写 Provider 名称']);return null}
+  providers[mainName]=collectMainProvider();
+  document.querySelectorAll('.pv-card').forEach(function(card){
+    var name=card.querySelector('.pvcard-name').value.trim();
+    if(!name||name===mainName)return;
+    providers[name]=collectExtraProvider(card);
+  });
+  var routeEls=document.querySelectorAll('.r-row'),routes=[];
+  routeEls.forEach(function(row){
+    var val=row.querySelector('.r-value').value.trim();
+    if(!val)return;
+    var type=row.querySelector('.r-type').value;
+    var match=type==='exact'?{exact:val}:{prefix:val};
+    var pv=row.querySelector('.r-provider').value.trim()||mainName;
+    var modelEl=row.querySelector('.r-model');
+    var model=modelEl?(modelEl.tagName==='SELECT'?modelEl.value:modelEl.value.trim()):'';
+    routes.push({match:match,provider:pv,upstreamModel:model,fallback:[]});
+  });
+  $('fallbackEditor').querySelectorAll('.fb-section').forEach(function(sec,idx){
+    if(idx>=routes.length)return;
+    var fbs=[];sec.querySelectorAll('.fb-row').forEach(function(row){
+      var inputs=row.querySelectorAll('input');
+      var p=inputs[0].value.trim(),m=inputs[1].value.trim();
+      if(p&&m)fbs.push({provider:p,upstreamModel:m});
+    });
+    routes[idx].fallback=fbs;
+  });
+  return{
+    server:{host:$('svHost').value.trim()||'127.0.0.1',port:parseInt($('svPort').value,10)||8787,authToken:$('svAuth').value.trim()||undefined},
+    providers:providers,routes:routes
+  };
+}
+
+/* ── Validation ── */
+function validateProfile(name,config){
+  var errs=[];
+  var names=Object.keys(config.providers);
+  if(!name)errs.push('请填写配置方案名称');
+  if(!names.length)errs.push('至少需要一个 Provider');
+  if(!config.routes.length)errs.push('至少需要一条路由规则');
+  names.forEach(function(n){errs=errs.concat(validateProvider(n,config.providers[n]))});
+  config.routes.forEach(function(r){
+    if(!r.provider)errs.push('路由 '+routeLabel(r)+' 缺少 Provider');
+    if(!r.upstreamModel)errs.push('路由 '+routeLabel(r)+' 缺少 Upstream Model');
+    if(r.provider&&names.indexOf(r.provider)<0)errs.push('路由引用了不存在的 Provider: '+r.provider);
+    (r.fallback||[]).forEach(function(f){if(names.indexOf(f.provider)<0)errs.push('Fallback 引用了不存在的 Provider: '+f.provider)});
+  });
+  return errs;
+}
+function validateProvider(name,p){
+  var errs=[];
+  if(!p.apiKey)errs.push('Provider '+name+' 缺少 API Key');
+  if(!p.baseUrl)errs.push('Provider '+name+' 需要 Base URL');
+  if(p.baseUrl&&!isURL(p.baseUrl))errs.push('Provider '+name+' Base URL 无效');
+  if(p.modelsUrl&&!isURL(p.modelsUrl))errs.push('Provider '+name+' Models URL 无效');
+  if(!p.capabilities||!p.capabilities.contentBlocks.length)errs.push('Provider '+name+' 至少需要一个 Content Block');
+  return errs;
+}
+function routeLabel(r){return r.match&&(r.match.exact||r.match.prefix)||'(空匹配)'}
+function isURL(v){try{var u=new URL(v);return u.protocol==='http:'||u.protocol==='https:'}catch(_){return false}}
+function setErrors(errs){
+  if(!errs.length){$('errorBox').classList.add('hidden');$('errorBox').innerHTML='';return}
+  $('errorBox').innerHTML=errs.map(function(e){return'<div>'+esc(e)+'</div>'}).join('');
+  $('errorBox').classList.remove('hidden');
+}
+
+/* ── Save & Activate ── */
+async function doSave(){
+  if(!state.currentId){toast('请先创建一个配置方案','err');return}
+  var name=$('profileName').value.trim();
+  var config=collectConfig();if(!config)return;
+  var errs=validateProfile(name,config);setErrors(errs);if(errs.length)return;
+  try{
+    var r=await api('PUT','/api/admin/profiles/'+state.currentId,{name:name,config:config});
+    state.dirty=false;$('saveBtn').textContent='保存';
+    $('savedAt').textContent='保存于 '+new Date().toLocaleString('zh-CN')+'，重启后生效';
+    await loadProfiles();
+    state.currentId=r.profile.id;renderSidebar();
+    toast('已保存，重启服务后生效','ok');
+  }catch(e){setErrors([e.message||'保存失败']);toast(e.message||'保存失败','err')}
+}
+async function doActivate(){
+  if(!state.currentId){toast('请先创建一个配置方案','err');return}
+  var name=$('profileName').value.trim();
+  var config=collectConfig();if(!config)return;
+  var errs=validateProfile(name,config);setErrors(errs);if(errs.length)return;
+  try{
+    await api('PUT','/api/admin/profiles/'+state.currentId,{name:name,config:config});
+    await api('POST','/api/admin/profiles/activate',{id:state.currentId});
+    state.dirty=false;$('saveBtn').textContent='保存';
+    $('savedAt').textContent='已设为当前并保存于 '+new Date().toLocaleString('zh-CN')+'，重启后生效';
+    await loadProfiles();renderSidebar();
+    toast('已设为当前方案，重启后生效','ok');
+  }catch(e){setErrors([e.message||'激活失败']);toast(e.message||'激活失败','err')}
+}
+
+/* ═══════════════════════════════════════════════════════
+   Init
+   ═══════════════════════════════════════════════════════ */
+/* ── 强制重启 ── */
+async function forceRestart(){
+  if(!confirm('确定要强制重启服务吗？\n\n这会释放当前端口并退出进程。\n仅在 tsx watch 模式下会自动重启。'))return;
+  var btn=$('restartBtn');
+  btn.textContent='重启中…';btn.disabled=true;
+  try{
+    var r=await api('POST','/api/admin/kill-port');
+    toast(r.message||'端口已释放','ok');
+  }catch(e){
+    btn.textContent='重启';btn.disabled=false;
+    toast(e.message||'重启失败','err');
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   Performance Metrics Polling
+   ═══════════════════════════════════════════════════════ */
+var metricsTimer=null;
+function startMetricsPoll(){
+  pollMetrics();
+  if(metricsTimer)clearInterval(metricsTimer);
+  metricsTimer=setInterval(pollMetrics,5000);
+}
+async function pollMetrics(){
+  try{
+    var r=await fetch('/api/admin/metrics').then(function(r){return r.json()});
+    $('mTotal').textContent=r.total!=null?r.total:'-';
+    $('mActive').textContent=r.active!=null?r.active:'-';
+    $('mAvgLatency').textContent=r.avgLatencyMs!=null?r.avgLatencyMs+'ms':'-';
+    $('mP95').textContent=r.p95LatencyMs!=null?r.p95LatencyMs+'ms':'-';
+    $('mP99').textContent=r.p99LatencyMs!=null?r.p99LatencyMs+'ms':'-';
+    $('mRPS').textContent=r.requestsPerSec!=null?r.requestsPerSec.toFixed(1)+'/s':'-';
+    $('mTPS').textContent=r.tokensPerSec!=null
+      ?(r.tokensPerSec>=1000?(r.tokensPerSec/1000).toFixed(1)+'k/s':r.tokensPerSec+'/s'):'-';
+    var pool=r.poolActive!=null&&r.poolMax!=null?r.poolActive+' / '+r.poolMax:'-';
+    $('mPool').textContent=pool;
+    $('mErrors').textContent=r.errors!=null?r.errors:'-';
+    $('mInputTokens').textContent=r.totalInputTokens!=null
+      ?(r.totalInputTokens>=1000?(r.totalInputTokens/1000).toFixed(1)+'k':r.totalInputTokens):'-';
+    $('mOutputTokens').textContent=r.totalOutputTokens!=null
+      ?(r.totalOutputTokens>=1000?(r.totalOutputTokens/1000).toFixed(1)+'k':r.totalOutputTokens):'-';
+    $('metricsUpdated').textContent='更新于 '+new Date().toLocaleTimeString('zh-CN');
+  }catch(e){$('metricsUpdated').textContent='获取中…'}
+}
+
+loadProfiles();startMetricsPoll();
+
+
+</script>
+</body>
+</html>

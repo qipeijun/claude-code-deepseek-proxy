@@ -1,40 +1,12 @@
 import type { AppConfig } from "./types.js";
 
+// 内置默认配置 — 在没有任何存储方案时使用。
+// 不包含 API Key，需通过 admin 页面 http://127.0.0.1:8787/admin 配置。
 export const defaultConfig: AppConfig = {
   server: {
     host: "127.0.0.1",
-    port: 8787,
-    authTokenEnv: "LOCAL_PROXY_API_KEY"
+    port: 8787
   },
-  providers: {
-    deepseek: {
-      type: "anthropic",
-      baseUrl: "https://api.deepseek.com/anthropic",
-      apiKeyEnv: "DEEPSEEK_API_KEY",
-      timeoutMs: 120_000,
-      capabilities: {
-        contentBlocks: ["text", "tool_use", "tool_result", "thinking"]
-      }
-    }
-  },
-  routes: [
-    {
-      match: { prefix: "claude-sonnet" },
-      provider: "deepseek",
-      upstreamModel: "deepseek-v4-pro",
-      fallback: []
-    },
-    {
-      match: { prefix: "claude-opus" },
-      provider: "deepseek",
-      upstreamModel: "deepseek-v4-pro",
-      fallback: []
-    },
-    {
-      match: { prefix: "claude-haiku" },
-      provider: "deepseek",
-      upstreamModel: "deepseek-v4-pro",
-      fallback: []
-    }
-  ]
+  providers: {},
+  routes: []
 };

@@ -25,11 +25,15 @@ export const providerSchema = z.object({
   type: z.literal("anthropic"),
   baseUrl: z.string().url().optional(),
   baseUrlEnv: z.string().min(1).optional(),
-  apiKeyEnv: z.string().min(1),
+  modelsUrl: z.string().url().optional(),
+  apiKey: z.string().min(1).optional(),
+  apiKeyEnv: z.string().min(1).optional(),
   timeoutMs: z.number().int().positive().default(120_000),
   capabilities: providerCapabilitiesSchema
 }).refine((value) => Boolean(value.baseUrl) !== Boolean(value.baseUrlEnv), {
   message: "provider must contain exactly one of baseUrl or baseUrlEnv"
+}).refine((value) => Boolean(value.apiKey) || Boolean(value.apiKeyEnv), {
+  message: "provider must contain at least one of apiKey or apiKeyEnv"
 });
 
 export const routeTargetSchema = z.object({
@@ -54,6 +58,7 @@ export const appConfigSchema = z.object({
     .object({
       host: z.string().min(1).default("127.0.0.1"),
       port: z.number().int().positive().default(8787),
+      authToken: z.string().min(1).optional(),
       authTokenEnv: z.string().min(1).optional()
     })
     .default({ host: "127.0.0.1", port: 8787 }),

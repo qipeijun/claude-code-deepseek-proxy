@@ -53,6 +53,10 @@ const STATIC_FILES: Record<string, StaticFile> = {
     path: join(adminDir, "js", "ui", "sidebar.js"),
     contentType: "application/javascript; charset=utf-8"
   },
+  "/admin/js/ui/statusCanvas.js": {
+    path: join(adminDir, "js", "ui", "statusCanvas.js"),
+    contentType: "application/javascript; charset=utf-8"
+  },
   "/admin/js/ui/providerCards.js": {
     path: join(adminDir, "js", "ui", "providerCards.js"),
     contentType: "application/javascript; charset=utf-8"

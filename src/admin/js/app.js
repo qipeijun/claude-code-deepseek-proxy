@@ -16,6 +16,7 @@ import {
 } from './views/config.js';
 import { renderSidebar } from './ui/sidebar.js';
 import { startMetricsPoll, stopMetricsPoll } from './ui/metrics.js';
+import { startStatusCanvas } from './ui/statusCanvas.js';
 import { toast } from './ui/toast.js';
 
 // ═══════════════════════════════════════════
@@ -190,6 +191,7 @@ async function init() {
   // 初始加载
   loadProfiles();
   startMetricsPoll();
+  startStatusCanvas();
 }
 
 init();

@@ -6,11 +6,12 @@
 
 ```bash
 cp config.example.yaml config.yaml
+cp .env.example .env
 npm install
-export LOCAL_PROXY_API_KEY="local-secret"
-export DEEPSEEK_API_KEY="sk-..."
 npm run dev
 ```
+
+把 `.env` 里的 `DEEPSEEK_API_KEY` 改成你的真实 DeepSeek Key。`LOCAL_PROXY_API_KEY` 是本地代理密码，自己定一个即可。
 
 Claude Code 侧配置：
 

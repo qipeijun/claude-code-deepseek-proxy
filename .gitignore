@@ -1,8 +1,10 @@
 node_modules
 dist
 .env
+*.local
 config.yaml
 .DS_Store
+.idea
 coverage
 *.log
 yarn.lock

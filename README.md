@@ -1,6 +1,6 @@
 # Claude Code DeepSeek Proxy
 
-让 DeepSeek 无缝驱动 Claude Code 的 Anthropic 兼容中转代理——路由匹配、模型名改写、失败自动切换。
+让 DeepSeek 无缝驱动 Claude Code 的 Anthropic 兼容中转代理——路由匹配、模型名映射、失败自动切换。
 
 ```
 ┌──────────────┐     ┌──────────────────┐     ┌───────────────────┐
@@ -15,9 +15,9 @@
 直接用 DeepSeek 接 Claude Code 有两个问题：
 
 1. **子代理请求被拒**——Claude Code 子代理同时携带 `thinking: { type: "disabled" }` 和 `reasoning_effort`，DeepSeek 严格校验直接 400。
-2. **模型名对不上**——Claude Code 用 `claude-sonnet-4-6` 发请求，上游返回 `deepseek-v4-pro`，不还原会导致行为异常。
+2. **模型名对不上**——Claude Code 用 `claude-sonnet-4-6` 发请求，上游返回 `deepseek-v4-pro`，不映射回来会导致行为异常。
 
-本代理在中间做：请求规范化 → 路由匹配 → 模型名替换 → 上游转发 → 响应模型名还原 → 失败 fallback。
+本代理在中间做：请求规范化 → 路由匹配 → 模型名映射 → 上游转发 → 失败 fallback。
 
 ## 快速开始
 
@@ -42,7 +42,7 @@ export ANTHROPIC_API_KEY="你在 admin 中设置的鉴权密码"   # 未设鉴�
 ## 核心特性
 
 - **请求规范化** — 子代理携带的 `thinking: disabled` + `reasoning_effort` 矛盾字段在发出前自动清洗，主代理扩展思考不受影响。
-- **模型名改写** — 请求侧替换为上游模型名，响应侧（JSON + SSE 流）还原为原始模型名。SSE 流改写做了事件边界缓冲。
+- **模型名映射** — 请求侧映射为上游模型名，响应侧（JSON + SSE 流）映射回原始模型名。SSE 流映射做了事件边界缓冲。
 - **模型路由** — 支持 `exact` 精确匹配和 `prefix` 前缀匹配。exact 优先于 prefix，多个 prefix 命中取最长前缀。
 - **Fallback 容灾** — 只有显式配置了 `fallback` 的路由才会切换。触发条件：5xx / 429 / 请求异常。不做静默降级或自动兜底。
 - **内容块校验** — 发出前检查 `system` 和 `messages[].content` 的 type 是否在上游能力范围内，不支持的类型直接报错。

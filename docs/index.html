@@ -2,1225 +2,427 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Claude Code DeepSeek Proxy — 让 DeepSeek 驱动 Claude Code</title>
-<meta name="description" content="面向 Claude Code 的 Anthropic 兼容中转服务。自动清洗子代理请求、透明改写模型名、按规则路由分发——让 DeepSeek 无缝驱动 Claude Code 的主 agent 和子 agent。">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Claude Code DeepSeek Proxy</title>
+<meta name="description" content="一个本地代理，让 DeepSeek 完整驱动 Claude Code 的主 agent、子 agent 和并行 agent。">
 <style>
-/* ═══════════════════════════════════════════════════════
-   Design: Precision Engineering
-   Tone: clean, trustworthy developer tooling
-   ═══════════════════════════════════════════════════════ */
-
+/* ═══════════════════════════════════════════════════
+   Design: Terminal Industrial
+   Monospace headings, single accent, no decorations
+   ═══════════════════════════════════════════════════ */
 :root {
-  --bg-base: #0d0d12;
-  --bg-surface: #13131a;
-  --bg-elevated: #1a1a24;
-  --bg-raised: #22222e;
-  --border: #1e1e2a;
-  --border-strong: #2a2a3a;
-  --hairline: 0.5px;   /* Retina 1 物理像素 */
-  --text-primary: #e4e4ec;
-  --text-secondary: #9898a8;
-  --text-tertiary: #606078;
-  --amber: #f0a040;
-  --amber-dim: #805820;
-  --amber-glow: rgba(240, 160, 64, 0.12);
-  --teal: #3dd6a8;
-  --teal-dim: #186050;
-  --red: #e05050;
-  --radius-sm: 4px;
-  --radius: 6px;
-  --radius-lg: 10px;
-  --font-body: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", "Segoe UI", sans-serif;
-  --font-mono: "SF Mono", "Cascadia Code", "JetBrains Mono", "Menlo", monospace;
+  --bg: #08080f;
+  --surface: #0d0d18;
+  --elevated: #12121f;
+  --border: rgba(255,255,255,0.06);
+  --border-hover: rgba(255,255,255,0.12);
+  --text: #c0c0cc;
+  --text-dim: #787888;
+  --text-faint: #484858;
+  --amber: #e09840;
+  --amber-dim: rgba(224,152,64,0.08);
+  --green: #40b884;
+  --green-dim: rgba(64,184,132,0.08);
+  --red: #d05050;
+  --red-dim: rgba(208,80,80,0.06);
+  --mono: "SF Mono","Cascadia Code","JetBrains Mono","IBM Plex Mono","Menlo",monospace;
+  --sans: -apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;
 }
 
-*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;background:var(--bg)}
+body{color:var(--text);font-family:var(--sans);font-size:16px;line-height:1.6;overflow-x:hidden}
 
-html {
-  scroll-behavior: smooth;
-  background: var(--bg-base);
-  color: var(--text-primary);
-  font-family: var(--font-body);
-  font-size: 16px;
-  line-height: 1.65;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-body {
-  position: relative;
-  overflow-x: hidden;
+/* Grid overlay */
+body::before{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:linear-gradient(rgba(255,255,255,0.018) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.018) 1px,transparent 1px);
+  background-size:48px 48px;
+  mask-image:radial-gradient(ellipse 60% 60% at 50% 5%,#000 25%,transparent 65%);
 }
 
-/* ── Dot grid background ── */
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  background-image: radial-gradient(circle, rgba(255,255,255,0.04) 1px, transparent 1px);
-  background-size: 24px 24px;
-  mask-image: linear-gradient(to bottom, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0.15) 50%, rgba(0,0,0,0.04) 100%);
-  -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0.15) 50%, rgba(0,0,0,0.04) 100%);
+/* Noise */
+body::after{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;opacity:0.025;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.72' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size:100px 100px;
 }
 
-/* ── Container ── */
-.container {
-  position: relative;
-  z-index: 1;
-  max-width: 1040px;
-  margin: 0 auto;
-  padding: 0 1.75rem;
-}
+.wrap{position:relative;z-index:1;max-width:920px;margin:0 auto;padding:0 1.5rem}
 
-/* ═══════════════════════════════════════════════════════
-   Navigation
-   ═══════════════════════════════════════════════════════ */
-nav {
-  position: fixed;
-  top: 0; left: 0; right: 0;
-  z-index: 100;
-  padding: 0.85rem 1.75rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: rgba(13,13,18,0.78);
-  backdrop-filter: blur(12px) saturate(140%);
-  -webkit-backdrop-filter: blur(12px) saturate(140%);
-  border-bottom: var(--hairline) solid var(--border);
+/* ═══ Nav ═══ */
+nav{
+  position:fixed;top:0;left:0;right:0;z-index:100;
+  padding:0.6rem 1.5rem;
+  display:flex;align-items:center;justify-content:space-between;
+  background:rgba(8,8,15,0.78);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  border-bottom:0.5px solid var(--border);
 }
-.nav-brand {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  font-family: var(--font-mono);
-  font-size: 0.92rem;
-  font-weight: 500;
-  color: var(--text-primary);
-  text-decoration: none;
-  letter-spacing: -0.01em;
-}
-.nav-brand .dot {
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  background: var(--teal);
-  box-shadow: 0 0 8px rgba(61,214,168,0.35);
-  flex-shrink: 0;
-}
-.nav-brand span { color: var(--text-tertiary); }
-.nav-links {
-  display: flex;
-  gap: 0.25rem;
-  list-style: none;
-}
-.nav-links a {
-  color: var(--text-secondary);
-  text-decoration: none;
-  font-size: 0.92rem;
-  padding: 0.35rem 0.75rem;
-  border-radius: var(--radius-sm);
-  transition: all 0.18s;
-}
-.nav-links a:hover {
-  color: var(--text-primary);
-  background: var(--bg-elevated);
-}
-.nav-gh-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  font-size: 0.82rem;
-  color: var(--text-secondary);
-  text-decoration: none;
-  padding: 0.3rem 0.7rem;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-strong);
-  transition: all 0.18s;
-}
-.nav-gh-btn:hover { color: var(--text-primary); border-color: var(--text-tertiary); }
+.nav-brand{display:flex;align-items:center;gap:0.5rem;font-family:var(--mono);font-size:0.78rem;color:var(--text-dim)}
+.nav-dot{width:6px;height:6px;border-radius:50%;background:var(--green);flex-shrink:0}
+.nav-links{display:flex;align-items:center;gap:0.15rem;list-style:none}
+.nav-links a{font-size:0.8rem;color:var(--text-dim);text-decoration:none;padding:0.3rem 0.6rem;transition:all 0.18s}
+.nav-links a:hover{color:var(--text);background:var(--elevated)}
+.nav-star{display:flex;align-items:center;gap:0.3rem;font-family:var(--mono);font-size:0.72rem;color:var(--amber);border:0.5px solid rgba(224,152,64,0.18);padding:0.2rem 0.5rem;text-decoration:none;transition:all 0.2s}
+.nav-star:hover{border-color:rgba(224,152,64,0.35);background:var(--amber-dim)}
 
-/* ═══════════════════════════════════════════════════════
-   Hero
-   ═══════════════════════════════════════════════════════ */
-.hero {
-  padding: 7.5rem 0 5.5rem;
-  position: relative;
-  overflow: hidden;
-}
-.hero .container {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 3rem;
-  align-items: center;
-}
-.hero-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--amber);
-  background: var(--amber-glow);
-  border: 1px solid rgba(240,160,64,0.18);
-  padding: 0.3em 0.85em;
-  border-radius: 99px;
-  margin-bottom: 1.75rem;
-}
-.hero-badge .pulse {
-  width: 6px; height: 6px;
-  border-radius: 50%;
-  background: var(--amber);
-  animation: pulse-dot 2.4s ease-in-out infinite;
-}
-@keyframes pulse-dot {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(240,160,64,0.45); }
-  50% { box-shadow: 0 0 0 6px rgba(240,160,64,0); }
-}
-.hero h1 {
-  font-size: clamp(2.4rem, 5vw, 3.2rem);
-  font-weight: 700;
-  line-height: 1.12;
-  letter-spacing: -0.025em;
-  color: #ececf4;
-  margin-bottom: 1.25rem;
-}
-.hero h1 em {
-  font-style: normal;
-  color: var(--amber);
-  text-decoration: underline;
-  text-decoration-color: rgba(240,160,64,0.25);
-  text-underline-offset: 0.16em;
-  text-decoration-thickness: 2px;
-}
-.hero-desc {
-  font-size: 1.05rem;
-  color: var(--text-secondary);
-  max-width: 30rem;
-  margin-bottom: 2rem;
-  line-height: 1.7;
-}
-.hero-actions {
-  display: flex;
-  gap: 0.6rem;
-  flex-wrap: wrap;
-  align-items: center;
-}
-.btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-family: var(--font-body);
-  font-size: 0.92rem;
-  font-weight: 520;
-  padding: 0.55em 1.3em;
-  border-radius: var(--radius);
-  text-decoration: none;
-  cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.25, 0.1, 0.25, 1);
-  border: 1px solid transparent;
-  white-space: nowrap;
-}
-.btn-primary {
-  background: var(--amber);
-  color: #0d0d14;
-  border-color: var(--amber);
-  font-weight: 580;
-}
-.btn-primary:hover {
-  background: #f4b860;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 16px rgba(240,160,64,0.2);
-}
-.btn-ghost {
-  background: transparent;
-  color: var(--text-primary);
-  border-color: var(--border-strong);
-}
-.btn-ghost:hover {
-  border-color: var(--text-tertiary);
-  background: rgba(255,255,255,0.03);
-}
-.hero-meta {
-  margin-top: 1.75rem;
-  display: flex;
-  gap: 1.5rem;
-  font-size: 0.82rem;
-  color: var(--text-tertiary);
-}
-.hero-meta span {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-}
-.hero-meta .check { color: var(--teal); font-weight: 600; }
+/* ═══ Hero ═══ */
+.hero{padding:7.5rem 0 4.5rem}
+.hero-grid{display:grid;grid-template-columns:1fr 1fr;gap:2rem;align-items:center}
+.hero h1{font-family:var(--mono);font-size:clamp(1.8rem,4vw,2.6rem);font-weight:600;line-height:1.2;color:#e8e8f0;letter-spacing:-0.03em;margin-bottom:0.75rem}
+.hero h1 span{color:var(--amber)}
+.hero .sub{font-size:1rem;color:var(--text-dim);max-width:30rem;line-height:1.7;margin-bottom:2rem}
+.hero .sub em{font-style:normal;color:var(--text);font-weight:520}
+.hero-actions{display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center}
+.btn{display:inline-flex;align-items:center;gap:0.4rem;font-family:var(--mono);font-size:0.82rem;font-weight:500;padding:0.55em 1.2em;cursor:pointer;transition:all 0.2s;text-decoration:none;border:none;white-space:nowrap}
+.btn-primary{background:var(--amber);color:#0a0a14}
+.btn-primary:hover{background:#e8a850;transform:translateY(-1px);box-shadow:0 4px 16px rgba(224,152,64,0.2)}
+.btn-ghost{background:transparent;color:var(--text-dim);border:0.5px solid var(--border)}
+.btn-ghost:hover{color:var(--text);border-color:var(--border-hover);background:rgba(255,255,255,0.02)}
+.hero-hint{margin-top:1.5rem;font-family:var(--mono);font-size:0.72rem;color:var(--text-faint);display:flex;gap:1.2rem;flex-wrap:wrap}
+.hero-hint i{font-style:normal;color:var(--green)}
 
-/* ── Hero Visual: Connection Diagram ── */
-.hero-visual {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 280px;
-}
-.diagram {
-  position: relative;
-  width: 100%;
-  max-width: 400px;
-}
-.diagram-node {
-  position: relative;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-lg);
-  padding: 1rem 1.25rem;
-  max-width: 220px;
-  transition: all 0.3s;
-  z-index: 2;
-}
-.diagram-node:hover, .diagram-node.highlight {
-  border-color: var(--amber);
-  box-shadow: 0 0 24px rgba(240,160,64,0.08);
-}
-.diagram-node.left { margin-bottom: 1.25rem; }
-.diagram-node.right { margin-left: auto; margin-bottom: 1.25rem; }
-.diagram-node.center {
-  margin: 0 auto;
-  background: var(--bg-raised);
-  border-color: rgba(240,160,64,0.3);
-  box-shadow: 0 0 20px rgba(240,160,64,0.06);
-  z-index: 3;
-}
-.node-label {
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  color: var(--text-tertiary);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-bottom: 0.3rem;
-}
-.node-name {
-  font-weight: 600;
-  font-size: 1.05rem;
-  color: var(--text-primary);
-}
-.diagram-node.center .node-name { color: var(--amber); }
-.node-detail {
-  font-size: 0.75rem;
-  color: var(--text-tertiary);
-  margin-top: 0.15rem;
-}
-.diagram-arrows {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 1;
-}
-.diagram-arrows svg {
-  width: 100%;
-  height: 100%;
-}
+/* Hero SVG */
+.hero-diagram{display:flex;align-items:center;justify-content:center;min-height:200px}
+.hero-diagram svg{width:100%;height:auto}
 
-/* ═══════════════════════════════════════════════════════
-   Sections
-   ═══════════════════════════════════════════════════════ */
-section { padding: 4.5rem 0; position: relative; z-index: 1; }
+/* ═══ Section shared ═══ */
+.sec{padding:5rem 0}
+.sec-tag{font-family:var(--mono);font-size:0.66rem;letter-spacing:0.1em;color:var(--amber);margin-bottom:0.6rem;display:block}
+.sec h2{font-family:var(--mono);font-size:clamp(1.3rem,2.5vw,1.65rem);font-weight:600;color:#d8d8e0;letter-spacing:-0.02em;margin-bottom:0.5rem}
+.sec-sub{color:var(--text-dim);font-size:0.9rem;max-width:26rem;line-height:1.65}
 
-.section-header {
-  text-align: center;
-  margin-bottom: 3.5rem;
-}
-.section-label {
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--amber);
-  margin-bottom: 0.6rem;
-}
-.section-title {
-  font-size: clamp(1.6rem, 3vw, 2.1rem);
-  font-weight: 680;
-  letter-spacing: -0.02em;
-  color: #e0e0e8;
-  margin-bottom: 0.6rem;
-  line-height: 1.25;
-}
-.section-desc {
-  color: var(--text-secondary);
-  font-size: 1.05rem;
-  max-width: 32rem;
-  margin: 0 auto;
-}
+/* ═══ Problem/fix pairs ═══ */
+.fix-pairs{margin-top:2rem;display:flex;flex-direction:column;gap:0.6rem}
+.fix-row{display:grid;grid-template-columns:1fr 24px 1fr;gap:0.75rem;align-items:start}
+.fix-arrow{display:flex;align-items:center;justify-content:center;padding-top:1rem;color:var(--text-faint);font-family:var(--mono);font-size:0.9rem}
+.card{background:var(--surface);border:0.5px solid var(--border);padding:1.25rem 1.25rem 1.25rem 0.9rem;border-left:2px solid var(--red)}
+.card .c-title{font-weight:600;font-size:0.95rem;color:#d8d8e0;margin-bottom:0.3rem;font-family:var(--mono);letter-spacing:-0.01em}
+.card .c-body{font-size:0.84rem;color:var(--text-dim);line-height:1.65}
+.card .c-body code{font-size:0.9em;padding:0.05em 0.3em}
+.card.problem .c-body code{color:var(--red);background:var(--red-dim)}
+.card.fix{border-left-color:var(--green)}
+.card.fix .c-title{color:var(--green)}
+.card.fix .c-body code{color:var(--green);background:var(--green-dim)}
 
-/* ═══════════════════════════════════════════════════════
-   Problem Cards (Why section)
-   ═══════════════════════════════════════════════════════ */
-.problem-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 1rem;
-  max-width: 760px;
-  margin: 0 auto;
-}
-.problem-card {
-  background: var(--bg-surface);
-  border: var(--hairline) solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 1.75rem 1.75rem 1.75rem 1.5rem;
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 0 1rem;
-  transition: all 0.25s;
-}
-.problem-card:hover {
-  border-color: var(--border-strong);
-  background: var(--bg-elevated);
-}
-.problem-card .icon-cell {
-  font-size: 1.3rem;
-  line-height: 1;
-  padding-top: 1px;
-}
-.problem-card .title-cell {
-  font-weight: 640;
-  font-size: 1.05rem;
-  color: var(--text-primary);
-  margin-bottom: 0.3rem;
-}
-.problem-card .desc-cell {
-  font-size: 0.92rem;
-  color: var(--text-secondary);
-  line-height: 1.6;
-  grid-column: 2;
-}
-.problem-card .fix-cell {
-  margin-top: 0.6rem;
-  font-size: 0.82rem;
-  color: var(--teal);
-  font-weight: 520;
-  grid-column: 2;
-}
-.arrow-down {
-  text-align: center;
-  padding: 1.25rem 0;
-  font-size: 1.2rem;
-  color: var(--text-tertiary);
-  opacity: 0.5;
-}
+/* ═══ Pipeline ─═ */
+.pipe-wrap{margin-top:2rem;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:0.3rem}
+.pipe{display:flex;gap:0;min-width:600px}
+.pipe-step{flex:1;min-width:90px;background:var(--surface);border:0.5px solid var(--border);padding:1rem 0.7rem;text-align:center}
+.pipe-step+.pipe-step{border-left:none}
+.pipe-step .p-icon{font-size:0.95rem;margin-bottom:0.25rem;display:block}
+.pipe-step .p-name{font-family:var(--mono);font-weight:550;font-size:0.74rem;color:var(--text);margin-bottom:0.1rem}
+.pipe-step .p-desc{font-size:0.66rem;color:var(--text-faint);line-height:1.5}
+.pipe-arrow{display:flex;align-items:center;color:var(--text-faint);font-family:var(--mono);font-size:0.85rem;flex-shrink:0;padding:0 0.15rem;user-select:none}
 
-/* ═══════════════════════════════════════════════════════
-   Features Grid
-   ═══════════════════════════════════════════════════════ */
-.features-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0;
-  border: var(--hairline) solid var(--border);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-}
-.feature-card {
-  background: var(--bg-surface);
-  padding: 2rem 1.6rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-  border-right: var(--hairline) solid var(--border);
-  border-bottom: var(--hairline) solid var(--border);
-  transition: background 0.25s;
-  position: relative;
-}
-.feature-card:nth-child(3n) { border-right: none; }
-/* Remove bottom borders from last row — 8 items = 3+3+2, so items 7,8 */
-.feature-card:nth-child(n+7) { border-bottom: none; }
-.feature-card:hover { background: var(--bg-elevated); }
-.feature-card .fc-icon {
-  font-size: 1.35rem;
-  line-height: 1;
-  margin-bottom: 0.2rem;
-}
-.feature-card .fc-title {
-  font-weight: 640;
-  font-size: 1.05rem;
-  color: var(--text-primary);
-  letter-spacing: -0.01em;
-}
-.feature-card .fc-desc {
-  font-size: 0.92rem;
-  color: var(--text-secondary);
-  line-height: 1.65;
-  flex: 1;
-}
-.feature-card .fc-tag {
-  display: inline-block;
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
-  color: var(--amber);
-  background: var(--amber-glow);
-  padding: 0.15em 0.5em;
-  border-radius: 3px;
-  align-self: flex-start;
-}
+/* ═══ Quick Start ═══ */
+.qs-block{margin-top:2rem;background:var(--surface);border:0.5px solid var(--border);overflow:hidden}
+.term-top{display:flex;align-items:center;gap:7px;padding:0.5rem 0.8rem;background:rgba(0,0,0,0.25)}
+.term-dot{width:9px;height:9px;border-radius:50%}
+.term-dot:nth-child(1){background:#d05050}.term-dot:nth-child(2){background:#e09840}.term-dot:nth-child(3){background:#40b884}
+.term-content{padding:1rem;font-family:var(--mono);font-size:0.78rem;line-height:1.85;overflow-x:auto}
+.t-p{color:var(--green);user-select:none;margin-right:0.4rem}
+.t-c{color:#d0d0d8}
+.t-o{color:var(--text-dim)}
+.t-h{color:var(--amber)}
+.qs-split{display:grid;grid-template-columns:1fr 1fr;border-top:0.5px solid var(--border)}
+.qs-step{padding:1.25rem;border-right:0.5px solid var(--border)}
+.qs-step:last-child{border-right:none}
+.qs-step .qs-n{font-family:var(--mono);font-size:0.63rem;color:var(--amber);letter-spacing:0.08em;margin-bottom:0.25rem}
+.qs-step h4{font-family:var(--mono);font-size:0.9rem;font-weight:550;margin-bottom:0.3rem;color:#d0d0d8}
+.qs-step p{font-size:0.8rem;color:var(--text-dim);line-height:1.6;margin-bottom:0.5rem}
+.qs-step code{display:block;font-family:var(--mono);font-size:0.74rem;color:var(--green);background:var(--green-dim);padding:0.3em 0.5em;word-break:break-all}
 
-/* ═══════════════════════════════════════════════════════
-   Quick Start Section
-   ═══════════════════════════════════════════════════════ */
-.quickstart {
-  background: var(--bg-surface);
-  border: var(--hairline) solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 0;
-  overflow: hidden;
-}
-.quickstart-top {
-  padding: 2rem 2rem 0;
-}
-.quickstart h3 {
-  font-size: 1.15rem;
-  font-weight: 640;
-  margin-bottom: 0.4rem;
-  color: var(--text-primary);
-}
-.quickstart p {
-  font-size: 0.92rem;
-  color: var(--text-secondary);
-  margin-bottom: 1.25rem;
-}
+/* Admin mini window — CSS illustration */
+.admin-mini{margin-top:0.75rem;background:#0c0c18;border:0.5px solid var(--border);overflow:hidden}
+.admin-mini .am-bar{display:flex;align-items:center;gap:0.3rem;padding:0.35rem 0.55rem;background:rgba(0,0,0,0.3);font-family:var(--mono);font-size:0.58rem;color:var(--text-faint)}
+.am-bar .am-dot{width:7px;height:7px;border-radius:50%;background:#505068}
+.am-body{padding:0.6rem 0.7rem;display:flex;flex-direction:column;gap:0.35rem}
+.am-row{display:flex;align-items:center;gap:0.4rem}
+.am-label{font-family:var(--mono);font-size:0.58rem;color:var(--text-faint);min-width:3.2rem;text-align:right;flex-shrink:0}
+.am-input{flex:1;height:1.3rem;background:rgba(255,255,255,0.03);border:0.5px solid rgba(255,255,255,0.06);padding:0 0.3rem;font-family:var(--mono);font-size:0.56rem;color:var(--text-dim);display:flex;align-items:center}
+.am-input.filled{color:var(--amber)}
+.am-btn{display:inline-block;font-family:var(--mono);font-size:0.56rem;color:var(--amber);background:var(--amber-dim);border:0.5px solid rgba(224,152,64,0.15);padding:0.15em 0.5em;margin-top:0.2rem;align-self:flex-end}
 
-/* Terminal Block */
-.terminal {
-  background: #0a0a10;
-  border-radius: var(--radius);
-  overflow: hidden;
-  font-family: var(--font-mono);
-  font-size: 0.82rem;
-  margin-bottom: 1.5rem;
-  border: 1px solid var(--border-strong);
-}
-.terminal-bar {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 0.6rem 0.9rem;
-  background: rgba(255,255,255,0.02);
-  border-bottom: var(--hairline) solid var(--border);
-}
-.terminal-dot {
-  width: 10px; height: 10px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-.terminal-dot:nth-child(1) { background: #e05050; }
-.terminal-dot:nth-child(2) { background: var(--amber); }
-.terminal-dot:nth-child(3) { background: #50c878; }
-.terminal-body {
-  padding: 1rem 1rem;
-  line-height: 1.85;
-  overflow-x: auto;
-}
-.terminal-body .t-line {
-  display: flex;
-  gap: 0.3rem;
-  white-space: pre;
-}
-.t-prompt { color: var(--teal); flex-shrink: 0; user-select: none; }
-.t-cmd { color: var(--text-primary); }
-.t-out { color: var(--text-secondary); }
-.t-highlight { color: var(--amber); }
-.t-dim { color: var(--text-tertiary); }
+/* ═══ Two paths ═══ */
+.path-row{display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-top:2rem}
+.path-card{background:var(--surface);border:0.5px solid var(--border);padding:1.5rem}
+.path-card.recommend{border-color:rgba(224,152,64,0.18);background:var(--elevated)}
+.path-card h4{font-family:var(--mono);font-size:0.7rem;color:var(--text-faint);letter-spacing:0.06em;margin-bottom:0.4rem}
+.path-card .path-name{font-family:var(--mono);font-size:1.05rem;font-weight:580;margin-bottom:0.5rem}
+.path-card.recommend .path-name{color:var(--amber)}
+.path-card ul{list-style:none;font-size:0.84rem;color:var(--text-dim);line-height:1.9}
+.path-card ul li::before{content:'—';color:var(--text-faint);margin-right:0.4rem}
 
-.quickstart-steps {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 1rem;
-  padding: 0 2rem 2rem;
-}
-.qs-step {
-  background: var(--bg-elevated);
-  border: var(--hairline) solid var(--border);
-  border-radius: var(--radius);
-  padding: 1.25rem 1.25rem;
-}
-.qs-step-num {
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
-  color: var(--amber);
-  margin-bottom: 0.3rem;
-}
-.qs-step h4 {
-  font-size: 1.05rem;
-  font-weight: 620;
-  margin-bottom: 0.4rem;
-  color: var(--text-primary);
-}
-.qs-step code {
-  display: block;
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  color: var(--teal);
-  background: rgba(61,214,168,0.06);
-  padding: 0.35em 0.6em;
-  border-radius: 3px;
-  margin-top: 0.35rem;
-  word-break: break-all;
-}
+/* ═══ Footer ═══ */
+footer{border-top:0.5px solid var(--border);padding:2rem 0;text-align:center;font-family:var(--mono);font-size:0.72rem;color:var(--text-faint)}
+footer a{color:var(--text-dim);text-decoration:none;transition:color 0.2s}
+footer a:hover{color:var(--amber)}
 
-/* ═══════════════════════════════════════════════════════
-   API Table
-   ═══════════════════════════════════════════════════════ */
-.api-table-wrap {
-  border: var(--hairline) solid var(--border);
-  border-radius: var(--radius-lg);
-  overflow: auto;
-}
-.api-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.92rem;
-}
-.api-table thead {
-  background: var(--bg-surface);
-}
-.api-table th {
-  text-align: left;
-  padding: 0.8rem 1.2rem;
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--text-tertiary);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  border-bottom: var(--hairline) solid var(--border);
-  white-space: nowrap;
-}
-.api-table td {
-  padding: 0.75rem 1.2rem;
-  border-bottom: var(--hairline) solid var(--border);
-  color: var(--text-secondary);
-}
-.api-table tbody tr { transition: background 0.15s; }
-.api-table tbody tr:hover { background: rgba(255,255,255,0.015); }
-.api-table tbody tr:last-child td { border-bottom: none; }
-.api-table .method {
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  font-weight: 600;
-  padding: 0.15em 0.5em;
-  border-radius: 3px;
-}
-.method.get { color: var(--teal); background: rgba(61,214,168,0.08); }
-.method.post { color: var(--amber); background: rgba(240,160,64,0.08); }
-.method.put { color: #6ea8fe; background: rgba(110,168,254,0.08); }
-.method.delete { color: var(--red); background: rgba(224,80,80,0.08); }
-.api-table .path {
-  font-family: var(--font-mono);
-  font-size: 0.82rem;
-  color: var(--text-primary);
-}
+/* ── Reveal ── */
+.reveal{opacity:0;transform:translateY(16px);transition:opacity 0.5s ease,transform 0.5s ease}
+.reveal.on{opacity:1;transform:translateY(0)}
 
-/* ═══════════════════════════════════════════════════════
-   Architecture diagram
-   ═══════════════════════════════════════════════════════ */
-.arch-diagram {
-  background: var(--bg-surface);
-  border: var(--hairline) solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 2.5rem;
-  overflow-x: auto;
-}
-.arch-row {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0;
-  flex-wrap: wrap;
-  min-width: 480px;
-}
-.arch-box {
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
-  padding: 0.9rem 1.2rem;
-  text-align: center;
-  min-width: 140px;
-}
-.arch-box.main {
-  background: var(--bg-raised);
-  border-color: rgba(240,160,64,0.25);
-  box-shadow: 0 0 16px rgba(240,160,64,0.05);
-}
-.arch-box .arch-name {
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-.arch-box .arch-port {
-  font-size: 0.7rem;
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  margin-top: 0.15rem;
-}
-.arch-box.main .arch-name { color: var(--amber); }
-.arch-arrow {
-  font-size: 1.2rem;
-  color: var(--text-tertiary);
-  padding: 0 0.75rem;
-  flex-shrink: 0;
-}
-.arch-label {
-  font-size: 0.72rem;
-  color: var(--text-tertiary);
-  text-align: center;
-  margin-top: 0.5rem;
-  font-family: var(--font-mono);
-}
-
-/* ═══════════════════════════════════════════════════════
-   Footer
-   ═══════════════════════════════════════════════════════ */
-footer {
-  border-top: var(--hairline) solid var(--border);
-  padding: 2.5rem 0;
-  text-align: center;
-  position: relative;
-  z-index: 1;
-}
-footer .footer-text {
-  font-size: 0.92rem;
-  color: var(--text-tertiary);
-}
-footer .footer-text a {
-  color: var(--text-secondary);
-  text-decoration: none;
-  transition: color 0.18s;
-}
-footer .footer-text a:hover { color: var(--amber); }
-
-/* ═══════════════════════════════════════════════════════
-   Comparison Table
-   ═══════════════════════════════════════════════════════ */
-.compare-wrapper {
-  border: var(--hairline) solid var(--border);
-  border-radius: var(--radius-lg);
-  overflow: auto;
-}
-.compare-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.84rem;
-}
-.compare-table th {
-  text-align: left;
-  padding: 0.7rem 1rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--text-tertiary);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  border-bottom: var(--hairline) solid var(--border);
-  background: var(--bg-surface);
-}
-.compare-table th:first-child { padding-left: 1.2rem; }
-.compare-table td {
-  padding: 0.7rem 1rem;
-  border-bottom: var(--hairline) solid var(--border);
-  color: var(--text-secondary);
-}
-.compare-table td:first-child {
-  padding-left: 1.2rem;
-  font-weight: 520;
-  color: var(--text-primary);
-}
-.compare-table tr:last-child td { border-bottom: none; }
-.compare-table tbody tr:hover { background: rgba(255,255,255,0.015); }
-
-/* ═══════════════════════════════════════════════════════
-   Responsive
-   ═══════════════════════════════════════════════════════ */
-@media (max-width: 800px) {
-  .hero .container {
-    grid-template-columns: 1fr;
-    gap: 2rem;
-  }
-  .hero-visual { min-height: auto; }
-  .hero { padding: 6rem 0 4rem; }
-  .features-grid { grid-template-columns: 1fr 1fr; }
-  .feature-card:nth-child(3n) { border-right: var(--hairline) solid var(--border); }
-  .feature-card:nth-child(2n) { border-right: none; }
-  .feature-card:nth-child(n+7) { border-bottom: var(--hairline) solid var(--border); }
-  .problem-grid { grid-template-columns: 1fr; }
-  .quickstart-steps { grid-template-columns: 1fr; }
-  section { padding: 3.5rem 0; }
-}
-@media (max-width: 560px) {
-  .features-grid { grid-template-columns: 1fr; }
-  .feature-card { border-right: none !important; border-bottom: var(--hairline) solid var(--border) !important; }
-  .feature-card:last-child { border-bottom: none !important; }
-  .nav-links { display: none; }
-  .hero h1 { font-size: 1.8rem; }
-  .hero-actions { flex-direction: column; align-items: flex-start; }
-  .hero-meta { flex-direction: column; gap: 0.5rem; }
-  .arch-row { flex-direction: column; min-width: auto; }
-  .arch-arrow { transform: rotate(90deg); padding: 0.5rem 0; }
-  .api-table-wrap { font-size: 0.75rem; }
-  .api-table th, .api-table td { padding: 0.5rem 0.6rem; }
+/* ═══ Responsive ═══ */
+@media(max-width:860px){
+  .hero-grid{grid-template-columns:1fr;gap:1.5rem}
+  .hero-diagram{min-height:auto}
+  .hero-diagram svg{max-width:380px;margin:0 auto}
+  .fix-row{grid-template-columns:1fr;gap:0.3rem}
+  .fix-arrow{transform:rotate(90deg);padding:0}
+  .qs-split{grid-template-columns:1fr}
+  .qs-step{border-right:none;border-bottom:0.5px solid var(--border)}
+  .qs-step:last-child{border-bottom:none}
+  .path-row{grid-template-columns:1fr}
+  .pipe{min-width:520px}
+  .pipe-step{padding:0.8rem 0.4rem}
+  .pipe-step .p-name{font-size:0.68rem}
+  .pipe-step .p-desc{font-size:0.62rem}
+  .sec{padding:3.5rem 0}
+  .nav-links{display:none}
 }
 </style>
 </head>
 <body>
 
-<!-- ═══ Navigation ═══ -->
+<!-- ═══ Nav ═══ -->
 <nav>
-  <a href="#" class="nav-brand">
-    <span class="dot"></span> claude-code-deepseek-proxy
-    <span>v0.1.0</span>
-  </a>
-  <ul class="nav-links">
-    <li><a href="#features">特性</a></li>
-    <li><a href="#quickstart">快速开始</a></li>
-    <li><a href="#api">API</a></li>
-    <li><a href="#architecture">架构</a></li>
-  </ul>
-  <a href="https://github.com/qipeijun/claude-code-deepseek-proxy" class="nav-gh-btn" target="_blank" rel="noopener">
-    <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-    GitHub
+  <div class="nav-brand">
+    <span class="nav-dot"></span>cc-deepseek-proxy
+  </div>
+  <div class="nav-links">
+    <a href="#how">怎么做的</a>
+    <a href="#start">开始用</a>
+    <a href="#options">上游方案</a>
+  </div>
+  <a href="https://github.com/qipeijun/claude-code-deepseek-proxy" class="nav-star" target="_blank" rel="noopener">
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+    Star
   </a>
 </nav>
 
 <!-- ═══ Hero ═══ -->
-<header class="hero">
-  <div class="container">
+<main>
+<section class="hero">
+  <div class="wrap hero-grid">
     <div>
-      <div class="hero-badge">
-        <span class="pulse"></span> Open Source · MIT
-      </div>
-      <h1>
-        让 DeepSeek<br>无缝驱动 <em>Claude Code</em>
-      </h1>
-      <p class="hero-desc">
-        一个面向 Claude Code 的智能路由代理。自动清洗子代理请求、透明改写模型名、按规则匹配上游——让 DeepSeek 完整驱动主 agent、子 agent 和并行 agent，零配置错误。
+      <h1>Claude Code 连 DeepSeek<br>不止改个 <span>Base URL</span></h1>
+      <p class="sub">
+        子代理请求因格式冲突被拒 <em>400</em>，模型名对不上导致行为异常。<br>
+        本代理在中间做了协议适配——<em>一行命令</em>本地启动，无需手写配置。
       </p>
       <div class="hero-actions">
-        <a href="#quickstart" class="btn btn-primary">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          快速开始
-        </a>
-        <a href="https://github.com/qipeijun/claude-code-deepseek-proxy" class="btn btn-ghost" target="_blank" rel="noopener">
-          查看源码
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
-        </a>
+        <a href="#start" class="btn btn-primary">$ npm start</a>
+        <a href="https://github.com/qipeijun/claude-code-deepseek-proxy" class="btn btn-ghost" target="_blank" rel="noopener">GitHub →</a>
       </div>
-      <div class="hero-meta">
-        <span><span class="check">✓</span> 主 Agent</span>
-        <span><span class="check">✓</span> 子 Agent</span>
-        <span><span class="check">✓</span> 并行 Agent</span>
-        <span><span class="check">✓</span> SSE 流式</span>
+      <div class="hero-hint">
+        <span><i>&check;</i> 主 agent</span>
+        <span><i>&check;</i> 子 agent & 并行</span>
+        <span><i>&check;</i> 扩展思考</span>
+        <span><i>&check;</i> SSE 流式</span>
       </div>
     </div>
+    <div class="hero-diagram">
+      <svg viewBox="0 0 400 170" xmlns="http://www.w3.org/2000/svg">
+        <!-- Claude Code -->
+        <rect x="0" y="50" width="95" height="52" fill="#0d0d18" stroke="rgba(255,255,255,0.07)" stroke-width="0.7"/>
+        <text x="47" y="72" fill="#787888" font-family="SF Mono,Menlo,monospace" font-size="8.5" text-anchor="middle">CLIENT</text>
+        <text x="47" y="90" fill="#c8c8d4" font-family="SF Mono,Menlo,monospace" font-size="11" font-weight="600" text-anchor="middle">Claude Code</text>
 
-    <!-- Connection Diagram -->
-    <div class="hero-visual">
-      <div class="diagram">
-        <div class="diagram-node left">
-          <div class="node-label">客户端</div>
-          <div class="node-name">Claude Code</div>
-          <div class="node-detail">ANTHROPIC_BASE_URL</div>
-        </div>
-        <div class="diagram-node center">
-          <div class="node-label">代理服务 · :8787</div>
-          <div class="node-name">DeepSeek Proxy</div>
-          <div class="node-detail">路由 · 清洗 · 改写 · 容灾</div>
-        </div>
-        <div class="diagram-node right">
-          <div class="node-label">上游 API</div>
-          <div class="node-name">DeepSeek</div>
-          <div class="node-detail">Anthropic 兼容接口</div>
-        </div>
-      </div>
-    </div>
-  </div>
-</header>
+        <!-- Proxy -->
+        <rect x="133" y="50" width="134" height="52" fill="#11111f" stroke="rgba(224,152,64,0.22)" stroke-width="0.8"/>
+        <text x="200" y="72" fill="#e09840" font-family="SF Mono,Menlo,monospace" font-size="8.5" text-anchor="middle">PROXY · :8787</text>
+        <text x="200" y="90" fill="#e09840" font-family="SF Mono,Menlo,monospace" font-size="11" font-weight="600" text-anchor="middle">DeepSeek Proxy</text>
 
-<!-- ═══ Why Section ═══ -->
-<section id="why">
-  <div class="container">
-    <div class="section-header">
-      <div class="section-label">Problem & Solution</div>
-      <h2 class="section-title">为什么要用这个代理？</h2>
-      <p class="section-desc">直接用 DeepSeek 接 Claude Code 会遇到两个致命问题——这个代理把它们都解决了。</p>
-    </div>
+        <!-- DeepSeek -->
+        <rect x="305" y="50" width="95" height="52" fill="#0d0d18" stroke="rgba(255,255,255,0.07)" stroke-width="0.7"/>
+        <text x="352" y="72" fill="#787888" font-family="SF Mono,Menlo,monospace" font-size="8.5" text-anchor="middle">UPSTREAM</text>
+        <text x="352" y="90" fill="#c8c8d4" font-family="SF Mono,Menlo,monospace" font-size="11" font-weight="600" text-anchor="middle">DeepSeek</text>
 
-    <div class="problem-grid">
-      <div class="problem-card">
-        <div class="icon-cell">⚠️</div>
-        <div class="title-cell">子代理请求被拒</div>
-        <div class="desc-cell">
-          Claude Code 子代理同时携带 <code>thinking: { type: "disabled" }</code> 和 <code>reasoning_effort: "medium"</code>。DeepSeek 严格校验，认为关了思考就不能设 effort，直接返回 400。所有子代理和并行 agent 全部不可用。
-        </div>
-        <div class="fix-cell">→ 本代理在发出前自动清洗矛盾字段</div>
-      </div>
-      <div class="problem-card">
-        <div class="icon-cell">🔄</div>
-        <div class="title-cell">模型名对不上</div>
-        <div class="desc-cell">
-          Claude Code 用 <code>claude-sonnet-4-6</code> 发过去，上游返回 <code>deepseek-v4-pro</code>。Claude Code 根据响应模型名做后续决策，如果不对会导致行为异常甚至功能不可用。
-        </div>
-        <div class="fix-cell">→ 请求替换 + 响应还原，SSE 流逐事件改写</div>
-      </div>
+        <!-- Connecting lines -->
+        <line x1="95" y1="76" x2="133" y2="76" stroke="rgba(255,255,255,0.1)" stroke-width="0.8" stroke-dasharray="5 5"/>
+        <line x1="267" y1="76" x2="305" y2="76" stroke="rgba(255,255,255,0.1)" stroke-width="0.8" stroke-dasharray="5 5"/>
+
+        <!-- Traveling dots -->
+        <circle r="2.2" fill="#e09840" opacity="0.85">
+          <animateMotion dur="2.6s" repeatCount="indefinite" path="M98,76 L130,76"/>
+        </circle>
+        <circle r="2.2" fill="#e09840" opacity="0.85">
+          <animateMotion dur="2.6s" repeatCount="indefinite" begin="1.3s" path="M270,76 L302,76"/>
+        </circle>
+
+        <!-- Edge labels -->
+        <text x="114" y="63" fill="#585868" font-family="SF Mono,Menlo,monospace" font-size="7" text-anchor="middle">清洗 · 映射</text>
+        <text x="114" y="117" fill="#585868" font-family="SF Mono,Menlo,monospace" font-size="7" text-anchor="middle">子代理兼容</text>
+        <text x="286" y="63" fill="#585868" font-family="SF Mono,Menlo,monospace" font-size="7" text-anchor="middle">模型名映射</text>
+        <text x="286" y="117" fill="#585868" font-family="SF Mono,Menlo,monospace" font-size="7" text-anchor="middle">fallback 容灾</text>
+      </svg>
     </div>
-    <div class="arrow-down">↓</div>
   </div>
 </section>
 
-<!-- ═══ Features ═══ -->
-<section id="features">
-  <div class="container">
-    <div class="section-header">
-      <div class="section-label">Features</div>
-      <h2 class="section-title">核心能力</h2>
-      <p class="section-desc">不只是转发——在请求链路的关键节点做精确处理。</p>
+<!-- ═══ Problem ↔ Fix ═══ -->
+<section class="sec reveal" id="how" style="padding-top:0">
+  <div class="wrap">
+    <span class="sec-tag">/why</span>
+    <h2>两个问题，一个代理</h2>
+    <p class="sec-sub">不是配置不对。是 DeepSeek 的 Anthropic 实现和 Claude Code 的请求格式有系统性差异。</p>
+    <div class="fix-pairs">
+      <div class="fix-row">
+        <div class="card problem">
+          <div class="c-title">子代理请求被拒 400</div>
+          <div class="c-body">
+            Claude Code 子代理同时携带 <code>thinking: { type: "disabled" }</code> 和 <code>reasoning_effort</code>。DeepSeek 认为矛盾——关了思考就不该设 effort，直接拒绝。所有子代理和并行 agent 不可用。
+          </div>
+        </div>
+        <div class="fix-arrow">→</div>
+        <div class="card fix">
+          <div class="c-title">发出前自动清洗</div>
+          <div class="c-body">
+            检测到 <code>thinking.type === "disabled"</code> 时删除冲突字段。只处理子代理（<code>disabled</code>），主代理扩展思考（<code>enabled</code>）完全不受影响。最小化干预。
+          </div>
+        </div>
+      </div>
+      <div class="fix-row">
+        <div class="card problem">
+          <div class="c-title">模型名对不上，行为异常</div>
+          <div class="c-body">
+            Claude Code 以 <code>claude-sonnet-4-6</code> 发请求，上游返回 <code>deepseek-v4-pro</code>。Claude Code 依赖响应中的模型名做后续决策——不认识的名字会导致状态机紊乱。
+          </div>
+        </div>
+        <div class="fix-arrow">→</div>
+        <div class="card fix">
+          <div class="c-title">双向模型名映射</div>
+          <div class="c-body">
+            请求侧映射为上游模型名，响应侧映射回来——<code>JSON</code> 直接替换字段，<code>SSE 流</code>逐事件边界缓冲后处理。Claude Code 完全感知不到上游的真实模型名。
+          </div>
+        </div>
+      </div>
     </div>
+  </div>
+</section>
 
-    <div class="features-grid">
-      <div class="feature-card">
-        <div class="fc-icon">🧹</div>
-        <div class="fc-title">请求体规范化</div>
-        <div class="fc-desc">检测并清洗子代理请求中 thinking / reasoning_effort 的冲突组合，主代理扩展思考不受影响。</div>
-        <span class="fc-tag">关键</span>
-      </div>
-      <div class="feature-card">
-        <div class="fc-icon">🔄</div>
-        <div class="fc-title">模型名改写</div>
-        <div class="fc-desc">请求替换为上游模型名，响应（JSON + SSE 流）还原为原始模型名。SSE 做事件边界缓冲，避免跨 chunk 截断。</div>
-      </div>
-      <div class="feature-card">
-        <div class="fc-icon">🔀</div>
-        <div class="fc-title">智能路由</div>
-        <div class="fc-desc">exact 精确匹配优先于 prefix 前缀匹配，多个命中取最长前缀。无匹配返回 Anthropic 格式 404。</div>
-      </div>
-      <div class="feature-card">
-        <div class="fc-icon">🛡️</div>
-        <div class="fc-title">Fallback 容灾</div>
-        <div class="fc-desc">显式配置的 fallback 链，5xx/429/异常触发切换，按序尝试。不做静默降级，不自动兜底。</div>
-      </div>
-      <div class="feature-card">
-        <div class="fc-icon">✅</div>
-        <div class="fc-title">内容块校验</div>
-        <div class="fc-desc">发出前遍历 system 和 messages[].content，对比 provider 能力声明，不支持的类型返回明确错误。</div>
-      </div>
-      <div class="feature-card">
-        <div class="fc-icon">🔌</div>
-        <div class="fc-title">连接池管理</div>
-        <div class="fc-desc">undici Agent 按 origin 缓存复用，槽位机制控制并发（默认 32），池满返回 503，≥80% 预警。</div>
-      </div>
-      <div class="feature-card">
-        <div class="fc-icon">📊</div>
-        <div class="fc-title">实时指标</div>
-        <div class="fc-desc">内存环形缓冲区记录最近 200 条请求。延迟分布（P50/P95/P99）、吞吐量、Token 统计、连接池使用率。</div>
-      </div>
-      <div class="feature-card">
-        <div class="fc-icon">⚙️</div>
-        <div class="fc-title">可视化配置</div>
-        <div class="fc-desc">Web 管理后台，三步配置向导，方案 CRUD，上游模型查询，连通性测试，无需手动编辑配置文件。</div>
+<!-- ═══ Pipeline ═══ -->
+<section class="sec reveal" style="padding-top:0">
+  <div class="wrap">
+    <h2>/pipeline &nbsp;一次请求穿过代理</h2>
+    <div class="pipe-wrap" style="margin-top:1.25rem">
+      <div class="pipe">
+        <div class="pipe-step"><span class="p-icon">&#8201;🔐&#8201;</span><div class="p-name">认证</div><div class="p-desc">Bearer / key</div></div>
+        <span class="pipe-arrow">→</span>
+        <div class="pipe-step"><span class="p-icon">&#8201;🔀&#8201;</span><div class="p-name">路由</div><div class="p-desc">exact &gt; prefix</div></div>
+        <span class="pipe-arrow">→</span>
+        <div class="pipe-step"><span class="p-icon">&#8201;✅&#8201;</span><div class="p-name">校验</div><div class="p-desc">内容块能力</div></div>
+        <span class="pipe-arrow">→</span>
+        <div class="pipe-step"><span class="p-icon">&#8201;🧹&#8201;</span><div class="p-name">清洗</div><div class="p-desc">thinking 冲突</div></div>
+        <span class="pipe-arrow">→</span>
+        <div class="pipe-step"><span class="p-icon">&#8201;🔄&#8201;</span><div class="p-name">映射</div><div class="p-desc">模型名映射</div></div>
+        <span class="pipe-arrow">→</span>
+        <div class="pipe-step"><span class="p-icon">&#8201;📡&#8201;</span><div class="p-name">转发</div><div class="p-desc">连接池/超时</div></div>
+        <span class="pipe-arrow">→</span>
+        <div class="pipe-step"><span class="p-icon">&#8201;🛡️&#8201;</span><div class="p-name">容灾</div><div class="p-desc">5xx/429 切换</div></div>
       </div>
     </div>
   </div>
 </section>
 
 <!-- ═══ Quick Start ═══ -->
-<section id="quickstart">
-  <div class="container">
-    <div class="section-header">
-      <div class="section-label">Get Started</div>
-      <h2 class="section-title">快速开始</h2>
-      <p class="section-desc">不需要 .env 文件。克隆、安装、启动，然后在管理后台完成配置。</p>
-    </div>
-
-    <div class="quickstart">
-      <!-- Terminal Block -->
-      <div class="quickstart-top">
-        <h3>1. 克隆并启动代理</h3>
-        <p>首次启动无配置，终端会打印 banner 并提示打开管理后台。</p>
+<section class="sec reveal" id="start">
+  <div class="wrap">
+    <span class="sec-tag">/start</span>
+    <h2>三行命令跑起来</h2>
+    <p class="sec-sub">不需要 <code>.env</code> 文件。克隆、启动、打开管理后台——API Key 和路由全在 Web 页面配置。</p>
+    <div class="qs-block">
+      <div class="term-top"><span class="term-dot"></span><span class="term-dot"></span><span class="term-dot"></span></div>
+      <div class="term-content">
+        <span class="t-p">$</span><span class="t-c">git clone https://github.com/qipeijun/claude-code-deepseek-proxy.git</span><br>
+        <span class="t-p">$</span><span class="t-c">cd claude-code-deepseek-proxy && npm install && npm start</span><br>
+        <br>
+        <span class="t-o">──────────────────────────────────────────</span><br>
+        <span class="t-o">  Claude Code DeepSeek Proxy</span><br>
+        <span class="t-o">  admin →</span> <span class="t-h">http://127.0.0.1:8787/admin</span><br>
+        <span class="t-o">──────────────────────────────────────────</span>
       </div>
-      <div style="padding: 0 2rem 1.5rem;">
-        <div class="terminal">
-          <div class="terminal-bar">
-            <span class="terminal-dot"></span>
-            <span class="terminal-dot"></span>
-            <span class="terminal-dot"></span>
-          </div>
-          <div class="terminal-body">
-            <div class="t-line"><span class="t-prompt">$</span> <span class="t-cmd">git clone https://github.com/qipeijun/claude-code-deepseek-proxy.git</span></div>
-            <div class="t-line"><span class="t-prompt">$</span> <span class="t-cmd">cd claude-code-deepseek-proxy</span></div>
-            <div class="t-line"><span class="t-prompt">$</span> <span class="t-cmd">npm install && npm start</span></div>
-            <div class="t-line">&nbsp;</div>
-            <div class="t-line"><span class="t-out">══════════════════════════════════════════════</span></div>
-            <div class="t-line"><span class="t-out">  Claude Code DeepSeek Proxy</span></div>
-            <div class="t-line"><span class="t-out">  监听地址:</span>  <span class="t-highlight">http://127.0.0.1:8787</span></div>
-            <div class="t-line"><span class="t-out">  管理后台:</span>  <span class="t-highlight">http://127.0.0.1:8787/admin</span></div>
-            <div class="t-line"><span class="t-out">  当前没有任何路由规则，代理无法转发请求。</span></div>
-            <div class="t-line"><span class="t-out">  请打开管理后台完成配置后重启服务。</span></div>
-            <div class="t-line"><span class="t-out">══════════════════════════════════════════════</span></div>
+      <div class="qs-split">
+        <div class="qs-step">
+          <div class="qs-n">STEP 2</div>
+          <h4>管理后台填入上游信息</h4>
+          <p>打开 admin，填 DeepSeek 地址和 Key，验证连通性。一键添加路由规则，设为当前并保存。</p>
+          <div class="admin-mini">
+            <div class="am-bar"><span class="am-dot"></span><span class="am-dot"></span><span class="am-dot"></span>&nbsp;上游连接</div>
+            <div class="am-body">
+              <div class="am-row"><span class="am-label">Base URL</span><span class="am-input filled">api.deepseek.com/anthropic</span></div>
+              <div class="am-row"><span class="am-label">API Key</span><span class="am-input filled">sk-●●●●●●●●●●●●●●●●</span></div>
+              <div class="am-row"><span class="am-label">路由</span><span class="am-input filled">claude-sonnet → deepseek-v4-pro</span></div>
+              <span class="am-btn">设为当前并保存</span>
+            </div>
           </div>
         </div>
-      </div>
-
-      <div class="quickstart-steps">
         <div class="qs-step">
-          <div class="qs-step-num">STEP 2</div>
-          <h4>打开管理后台，三步完成配置</h4>
-          <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:0.5rem">① 填写上游地址 + API Key，获取模型列表验证连通性</p>
-          <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:0.5rem">② 添加路由规则（一键添加 Sonnet/Opus/Haiku）</p>
-          <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:0.85rem">③ 设为当前并保存，重启服务</p>
-          <code>http://127.0.0.1:8787/admin</code>
-        </div>
-        <div class="qs-step">
-          <div class="qs-step-num">STEP 3</div>
-          <h4>配置 Claude Code 客户端</h4>
-          <p style="font-size:0.85rem;color:var(--text-secondary)">设置 Anthropic 的 Base URL 指向本代理。如果在 admin 中设置了鉴权密码，也需配上。</p>
+          <div class="qs-n">STEP 3</div>
+          <h4>设 Claude Code 客户端</h4>
+          <p>把 Anthropic Base URL 指向代理。如果在 admin 设了鉴权密码，API Key 填那个密码。</p>
           <code>export ANTHROPIC_BASE_URL="http://127.0.0.1:8787"</code>
-          <code style="margin-top:0.3rem"># 若设置了鉴权密码：export ANTHROPIC_API_KEY="你的密码"</code>
+          <code style="margin-top:0.4rem"># 若设了鉴权：export ANTHROPIC_API_KEY="你的密码"</code>
         </div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ═══ Architecture ═══ -->
-<section id="architecture">
-  <div class="container">
-    <div class="section-header">
-      <div class="section-label">Architecture</div>
-      <h2 class="section-title">架构一览</h2>
-      <p class="section-desc">代理在 Claude Code 和上游之间的位置，以及内部处理链路。</p>
-    </div>
-
-    <!-- Request flow -->
-    <div class="arch-diagram" style="margin-bottom:1.5rem">
-      <div style="font-size:0.78rem;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:1.2rem;font-family:var(--font-mono)">请求处理链路</div>
-      <div class="arch-row">
-        <div class="arch-box">
-          <div class="arch-name">认证</div>
-          <div class="arch-port">Bearer / x-api-key</div>
-        </div>
-        <span class="arch-arrow">→</span>
-        <div class="arch-box">
-          <div class="arch-name">路由匹配</div>
-          <div class="arch-port">exact > prefix</div>
-        </div>
-        <span class="arch-arrow">→</span>
-        <div class="arch-box">
-          <div class="arch-name">内容块校验</div>
-          <div class="arch-port">capabilities check</div>
-        </div>
-        <span class="arch-arrow">→</span>
-        <div class="arch-box">
-          <div class="arch-name">请求规范化</div>
-          <div class="arch-port">thinking 清洗</div>
-        </div>
-        <span class="arch-arrow">→</span>
-        <div class="arch-box">
-          <div class="arch-name">模型名替换</div>
-          <div class="arch-port">→ upstreamModel</div>
-        </div>
+<!-- ═══ Two paths ═══ -->
+<section class="sec reveal" id="options" style="padding-top:0">
+  <div class="wrap">
+    <span class="sec-tag">/options</span>
+    <h2>两种上游方式</h2>
+    <p class="sec-sub">直连延迟最低。加网关可以获得 Key 管理和用量统计。</p>
+    <div class="path-row">
+      <div class="path-card recommend">
+        <h4>方案 A · 推荐</h4>
+        <div class="path-name">直连 DeepSeek</div>
+        <ul>
+          <li>延迟最低，一跳直达</li>
+          <li>配置最简单：地址 + Key</li>
+          <li>个人开发首选</li>
+        </ul>
       </div>
-      <div class="arch-row" style="margin-top:1rem">
-        <div class="arch-box main">
-          <div class="arch-name">上游转发</div>
-          <div class="arch-port">undici Agent 连接池</div>
-        </div>
-        <span class="arch-arrow">→</span>
-        <div class="arch-box">
-          <div class="arch-name">响应模型名还原</div>
-          <div class="arch-port">JSON + SSE 流</div>
-        </div>
-        <span class="arch-arrow">→</span>
-        <div class="arch-box">
-          <div class="arch-name">Fallback?</div>
-          <div class="arch-port">5xx/429 → 切换</div>
-        </div>
-        <span class="arch-arrow">→</span>
-        <div class="arch-box">
-          <div class="arch-name">指标记录</div>
-          <div class="arch-port">延迟 / Token</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Deployment topology -->
-    <div class="arch-diagram">
-      <div style="font-size:0.78rem;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:1.2rem;font-family:var(--font-mono)">部署拓扑</div>
-      <div class="arch-row">
-        <div class="arch-box">
-          <div class="arch-name">Claude Code</div>
-          <div class="arch-port">客户端</div>
-        </div>
-        <span class="arch-arrow">→</span>
-        <div class="arch-box main">
-          <div class="arch-name">Proxy :8787</div>
-          <div class="arch-port">本代理</div>
-        </div>
-        <span class="arch-arrow">→</span>
-        <div class="arch-box">
-          <div class="arch-name">DeepSeek</div>
-          <div class="arch-port">直连方案</div>
-        </div>
-      </div>
-      <div class="arch-label">—— 或者加一层 New API 网关 ——</div>
-      <div class="arch-row" style="margin-top:1rem">
-        <div class="arch-box">
-          <div class="arch-name">Claude Code</div>
-          <div class="arch-port">客户端</div>
-        </div>
-        <span class="arch-arrow">→</span>
-        <div class="arch-box main">
-          <div class="arch-name">Proxy :8787</div>
-          <div class="arch-port">本代理</div>
-        </div>
-        <span class="arch-arrow">→</span>
-        <div class="arch-box">
-          <div class="arch-name">New API :3000</div>
-          <div class="arch-port">密钥 · 用量 · 限流</div>
-        </div>
-        <span class="arch-arrow">→</span>
-        <div class="arch-box">
-          <div class="arch-name">DeepSeek</div>
-          <div class="arch-port">上游</div>
-        </div>
+      <div class="path-card">
+        <h4>方案 B</h4>
+        <div class="path-name">经 New API 网关</div>
+        <ul>
+          <li>Web 界面管理多 Key 轮换</li>
+          <li>历史用量统计 + 限流</li>
+          <li>团队共享场景</li>
+        </ul>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ═══ Comparison ═══ -->
-<section>
-  <div class="container">
-    <div class="section-header">
-      <div class="section-label">Options</div>
-      <h2 class="section-title">部署方案对比</h2>
-      <p class="section-desc">直连或经 New API 网关，按需选择。</p>
-    </div>
-    <div class="compare-wrapper">
-      <table class="compare-table">
-        <thead>
-          <tr>
-            <th></th>
-            <th>直连 DeepSeek</th>
-            <th>经 New API 网关</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr><td>前置条件</td><td>无</td><td>需额外部署 New API 服务</td></tr>
-          <tr><td>配置方式</td><td>admin 页面填写 DeepSeek 地址 + Key</td><td>admin 页面填写 New API 地址 + 令牌</td></tr>
-          <tr><td>Key 管理</td><td>Key 存储在 config-store.json</td><td>New API Web 界面，多 Key 轮换</td></tr>
-          <tr><td>用量统计</td><td>本代理内存中的实时指标</td><td>New API Web 界面查看历史用量</td></tr>
-          <tr><td>限流 / 计费</td><td>无</td><td>New API 支持</td></tr>
-          <tr><td>延迟</td><td>一跳直达，最低延迟</td><td>多一跳（本地 ~5ms）</td></tr>
-          <tr><td>适用场景</td><td>个人开发，追求最低延迟</td><td>团队共享、用量管理和计费控制</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-</section>
-
-<!-- ═══ API ═══ -->
-<section id="api">
-  <div class="container">
-    <div class="section-header">
-      <div class="section-label">API Reference</div>
-      <h2 class="section-title">API 端点</h2>
-      <p class="section-desc">代理兼容 Anthropic Messages API，并提供配置管理和监控端点。</p>
-    </div>
-    <div class="api-table-wrap">
-      <table class="api-table">
-        <thead>
-          <tr>
-            <th>方法</th>
-            <th>路径</th>
-            <th>说明</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><span class="method post">POST</span></td>
-            <td><span class="path">/v1/messages</span></td>
-            <td>Anthropic Messages API，支持 SSE 流式响应</td>
-          </tr>
-          <tr>
-            <td><span class="method post">POST</span></td>
-            <td><span class="path">/v1/messages/count_tokens</span></td>
-            <td>Token 计数</td>
-          </tr>
-          <tr>
-            <td><span class="method get">GET</span></td>
-            <td><span class="path">/v1/models</span></td>
-            <td>列出当前路由覆盖的模型</td>
-          </tr>
-          <tr>
-            <td><span class="method get">GET</span></td>
-            <td><span class="path">/healthz</span></td>
-            <td>健康检查</td>
-          </tr>
-          <tr style="border-top: 2px solid var(--border)">
-            <td><span class="method get">GET</span></td>
-            <td><span class="path">/admin</span></td>
-            <td>管理后台页面</td>
-          </tr>
-          <tr>
-            <td><span class="method get">GET</span></td>
-            <td><span class="path">/api/admin/profiles</span></td>
-            <td>列出所有配置方案</td>
-          </tr>
-          <tr>
-            <td><span class="method post">POST</span></td>
-            <td><span class="path">/api/admin/profiles</span></td>
-            <td>创建配置方案</td>
-          </tr>
-          <tr>
-            <td><span class="method put">PUT</span></td>
-            <td><span class="path">/api/admin/profiles/:id</span></td>
-            <td>更新配置方案</td>
-          </tr>
-          <tr>
-            <td><span class="method delete">DELETE</span></td>
-            <td><span class="path">/api/admin/profiles/:id</span></td>
-            <td>删除配置方案</td>
-          </tr>
-          <tr>
-            <td><span class="method post">POST</span></td>
-            <td><span class="path">/api/admin/profiles/activate</span></td>
-            <td>激活配置方案（重启生效）</td>
-          </tr>
-          <tr>
-            <td><span class="method post">POST</span></td>
-            <td><span class="path">/api/admin/upstream-models</span></td>
-            <td>查询上游可用模型列表</td>
-          </tr>
-          <tr>
-            <td><span class="method get">GET</span></td>
-            <td><span class="path">/api/admin/metrics</span></td>
-            <td>获取实时性能指标</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-</section>
+</main>
 
 <!-- ═══ Footer ═══ -->
 <footer>
-  <div class="container">
-    <p class="footer-text">
-      <a href="https://github.com/qipeijun/claude-code-deepseek-proxy">claude-code-deepseek-proxy</a>
-      &nbsp;·&nbsp; MIT License &nbsp;·&nbsp;
-      由 <a href="https://github.com/qipeijun">qipeijun</a> 维护
-    </p>
+  <div class="wrap">
+    <a href="https://github.com/qipeijun/claude-code-deepseek-proxy">cc-deepseek-proxy</a>
+    &nbsp;·&nbsp; MIT &nbsp;·&nbsp;
+    <a href="https://github.com/qipeijun">qipeijun</a>
+    &nbsp;·&nbsp;
+    <span>还没决定？<a href="https://github.com/qipeijun/claude-code-deepseek-proxy">去 GitHub 看源码 →</a></span>
   </div>
 </footer>
 
+<script>
+const obs=new IntersectionObserver((es)=>{es.forEach(e=>{if(e.isIntersecting)e.target.classList.add('on')})},{threshold:0.08})
+document.querySelectorAll('.reveal').forEach(el=>{obs.observe(el);if(el.getBoundingClientRect().top<window.innerHeight)el.classList.add('on')})
+
+// GitHub star count
+fetch('https://api.github.com/repos/qipeijun/claude-code-deepseek-proxy').then(r=>r.json()).then(d=>{
+  if(d.stargazers_count){
+    const s=document.querySelector('.nav-star');
+    s.innerHTML=s.innerHTML.replace('Star',d.stargazers_count+' stars');
+  }
+}).catch(()=>{})
+</script>
 </body>
 </html>

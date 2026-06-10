@@ -111,8 +111,18 @@ describe("Anthropic proxy server", () => {
     expect(response.json().content[0].type).toBe("tool_use");
   });
 
-  it("rejects unsupported content block types explicitly", async () => {
-    const app = await buildServer(makeConfig("http://127.0.0.1:9999"));
+  it("filters unsupported content blocks and injects note text instead of rejecting", async () => {
+    const upstream = await createUpstream((body) => ({
+      body: {
+        id: "msg_filtered",
+        type: "message",
+        role: "assistant",
+        model: body.model,
+        content: [{ type: "text", text: "我没有看到你发的图片，请用文字描述。" }],
+        stop_reason: "end_turn"
+      }
+    }));
+    const app = await buildServer(makeConfig(upstream.baseUrl));
 
     const response = await app.inject({
       method: "POST",
@@ -124,15 +134,28 @@ describe("Anthropic proxy server", () => {
         messages: [
           {
             role: "user",
-            content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: "abc" } }]
+            content: [
+              { type: "image", source: { type: "base64", media_type: "image/png", data: "abc" } },
+              { type: "text", text: "描述这张图片" }
+            ]
           }
         ]
       }
     });
 
     await app.close();
-    expect(response.statusCode).toBe(400);
-    expect(response.json().error.message).toContain("image");
+    await upstream.app.close();
+
+    // 请求应当成功，不再返回 400
+    expect(response.statusCode).toBe(200);
+
+    // 上游收到的内容应该已过滤掉 image，只保留 text + 提示
+    const upstreamMsg = upstream.calls[0].messages as Record<string, unknown>[];
+    const upstreamContent = upstreamMsg[0].content as unknown[];
+    expect(upstreamContent).toHaveLength(2);
+    expect(upstreamContent[0]).toMatchObject({ type: "text", text: "描述这张图片" });
+    expect(upstreamContent[1]).toMatchObject({ type: "text" });
+    expect((upstreamContent[1] as { text: string }).text).toContain("过滤");
   });
 
   it("loads configurable upstream models for admin provider forms", async () => {
@@ -259,6 +282,78 @@ describe("Anthropic proxy server", () => {
     expect(response.statusCode).toBe(200);
     expect(upstream.calls.map((call) => call.model)).toEqual(["deepseek-v4-pro", "claude-sonnet-4-6"]);
     expect(response.json().model).toBe("claude-sonnet-4-6");
+  });
+
+  it("preserves original body for fallback after primary filters unsupported blocks", async () => {
+    // 主 provider 不支持 image，fallback 支持 image
+    // 验证：主 provider 失败后，fallback 收到的请求体仍包含原始 image 块
+    const upstream = await createUpstream((body, count) => {
+      if (count === 1) {
+        return { statusCode: 500, body: { type: "error" } };
+      }
+      return {
+        body: {
+          id: "msg_fb_img",
+          type: "message",
+          role: "assistant",
+          model: body.model,
+          content: [{ type: "text", text: "received" }],
+          stop_reason: "end_turn"
+        }
+      };
+    });
+
+    const app = await buildServer({
+      server: { host: "127.0.0.1", port: 8787, authTokenEnv: "LOCAL_PROXY_API_KEY" },
+      providers: {
+        deepseek: {
+          type: "anthropic",
+          baseUrl: upstream.baseUrl,
+          apiKeyEnv: "DEEPSEEK_API_KEY",
+          timeoutMs: 120_000,
+          capabilities: { contentBlocks: ["text", "tool_use"] }
+        },
+        mapper: {
+          type: "anthropic",
+          baseUrl: upstream.baseUrl,
+          apiKeyEnv: "MAPPER_API_KEY",
+          timeoutMs: 120_000,
+          capabilities: { contentBlocks: ["text", "tool_use", "image"] }
+        }
+      },
+      routes: [{
+        match: { prefix: "claude-sonnet" },
+        provider: "deepseek",
+        upstreamModel: "deepseek-v4-pro",
+        fallback: [{ provider: "mapper", upstreamModel: "claude-sonnet-4-6" }]
+      }]
+    });
+
+    const imageBlock = { type: "image", source: { type: "base64", media_type: "image/png", data: "abc" } };
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/messages",
+      headers: { authorization: "Bearer local-secret" },
+      payload: {
+        model: "claude-sonnet-4-6",
+        max_tokens: 128,
+        messages: [{ role: "user", content: [imageBlock] }]
+      }
+    });
+
+    await app.close();
+    await upstream.app.close();
+
+    expect(response.statusCode).toBe(200);
+    // 第一次调用（主 provider）：image 被过滤，只剩 FILTER_NOTE
+    const firstContent = (upstream.calls[0].messages as Record<string, unknown>[])[0].content as unknown[];
+    expect(firstContent).toHaveLength(1);
+    expect((firstContent[0] as { type: string }).type).toBe("text");
+
+    // 第二次调用（fallback）：image 块仍在，未被第一次过滤污染
+    const secondContent = (upstream.calls[1].messages as Record<string, unknown>[])[0].content as unknown[];
+    expect(secondContent).toHaveLength(1);
+    expect(secondContent[0]).toMatchObject(imageBlock);
   });
 
   it("rewrites model names in SSE message_start events", async () => {

@@ -1,7 +1,7 @@
 import cors from "@fastify/cors";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { ProxyError, sendAnthropicError } from "./errors.js";
-import { assertSupportedContentBlocks } from "./contentBlocks.js";
+import { filterUnsupportedContentBlocks } from "./contentBlocks.js";
 import { acquireUpstreamSlot, callAnthropicUpstream, releaseUpstreamSlot } from "./http.js";
 import { restoreResponseModel, rewriteRequestModel, rewriteSseChunkText } from "./modelRewrite.js";
 import { normalizeUpstreamBody } from "./requestNormalize.js";
@@ -207,8 +207,17 @@ async function proxyWithFallback(
         "→ upstream"
       );
 
-      assertSupportedContentBlocks(body, target.providerConfig);
-      const upstreamBody = normalizeUpstreamBody(rewriteRequestModel(body, target.upstreamModel));
+      const { filtered: filteredBlocks, body: cleanedBody } = filterUnsupportedContentBlocks(
+        body,
+        target.providerConfig
+      );
+      if (filteredBlocks.length > 0) {
+        request.log.warn(
+          { filtered: filteredBlocks, provider: target.provider, model: route.externalModel },
+          "已过滤不支持的内容块，已在消息中注入提示文本"
+        );
+      }
+      const upstreamBody = normalizeUpstreamBody(rewriteRequestModel(cleanedBody, target.upstreamModel));
       upstream = await callAnthropicUpstream(target, path, upstreamBody, {
         accept: headerToString(request.headers.accept),
         "anthropic-version": headerToString(request.headers["anthropic-version"]),

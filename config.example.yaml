@@ -1,0 +1,47 @@
+server:
+  host: 127.0.0.1
+  port: 8787
+  authTokenEnv: LOCAL_PROXY_API_KEY
+
+providers:
+  deepseek:
+    type: anthropic
+    baseUrl: https://api.deepseek.com/anthropic
+    apiKeyEnv: DEEPSEEK_API_KEY
+    timeoutMs: 120000
+    capabilities:
+      contentBlocks:
+        - text
+        - tool_use
+        - tool_result
+        - thinking
+  mapper:
+    type: anthropic
+    baseUrlEnv: MAPPER_BASE_URL
+    apiKeyEnv: MAPPER_API_KEY
+    timeoutMs: 120000
+    capabilities:
+      contentBlocks:
+        - text
+        - tool_use
+        - tool_result
+        - thinking
+
+routes:
+  - match:
+      prefix: claude-sonnet
+    provider: deepseek
+    upstreamModel: deepseek-v4-pro
+    fallback:
+      - provider: mapper
+        upstreamModel: claude-sonnet-4-6
+
+  - match:
+      prefix: claude-opus
+    provider: deepseek
+    upstreamModel: deepseek-v4-pro
+
+  - match:
+      prefix: claude-haiku
+    provider: deepseek
+    upstreamModel: deepseek-v4-pro

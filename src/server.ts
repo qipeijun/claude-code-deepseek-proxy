@@ -99,6 +99,12 @@ export async function buildServer(configOverride?: AppConfig): Promise<FastifyIn
   });
 
   app.setErrorHandler((error, _request, reply) => {
+    // 防御：响应头已发送（如 SSE 流中途断开），无法再返回标准错误响应
+    if (reply.raw.headersSent) {
+      _request.log.error({ err: error }, "Error after response headers sent, cannot send error response");
+      return;
+    }
+
     if (error instanceof ProxyError) {
       return sendAnthropicError(reply, error);
     }
@@ -280,6 +286,11 @@ async function proxyWithFallback(
     });
   }
 
+  // 防御：如果响应已开始发送（如 SSE 流已写入数据），不能再发送错误响应
+  if (reply.raw.headersSent) {
+    return;
+  }
+
   return sendAnthropicError(reply, lastError ?? new ProxyError(502, "api_error", "All upstream providers failed"));
 }
 
@@ -300,24 +311,46 @@ async function sendUpstreamResponse(
     reply.header("connection", "keep-alive");
 
     let buffered = "";
-    for await (const chunk of upstream.body) {
-      buffered +=
-        typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8");
-      const eventBoundary = buffered.lastIndexOf("\n\n");
-      if (eventBoundary === -1) {
-        continue;
+    try {
+      for await (const chunk of upstream.body) {
+        buffered +=
+          typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8");
+        const eventBoundary = buffered.lastIndexOf("\n\n");
+        if (eventBoundary === -1) {
+          continue;
+        }
+
+        const complete = buffered.slice(0, eventBoundary + 2);
+        buffered = buffered.slice(eventBoundary + 2);
+        // 从 message_stop 事件中提取 usage（轻量解析，不做全量 JSON 反序列化）
+        extractUsageFromSse(complete, (i, o) => { inputTokens = i; outputTokens = o; });
+        reply.raw.write(rewriteSseChunkText(complete, externalModel));
       }
 
-      const complete = buffered.slice(0, eventBoundary + 2);
-      buffered = buffered.slice(eventBoundary + 2);
-      // 从 message_stop 事件中提取 usage（轻量解析，不做全量 JSON 反序列化）
-      extractUsageFromSse(complete, (i, o) => { inputTokens = i; outputTokens = o; });
-      reply.raw.write(rewriteSseChunkText(complete, externalModel));
-    }
-
-    if (buffered.length > 0) {
-      extractUsageFromSse(buffered, (i, o) => { inputTokens = i; outputTokens = o; });
-      reply.raw.write(rewriteSseChunkText(buffered, externalModel));
+      if (buffered.length > 0) {
+        extractUsageFromSse(buffered, (i, o) => { inputTokens = i; outputTokens = o; });
+        reply.raw.write(rewriteSseChunkText(buffered, externalModel));
+      }
+    } catch (err) {
+      if (reply.raw.headersSent) {
+        // 响应头已发送（至少写入过一个 SSE chunk），无法退回 fallback 或返回标准错误响应。
+        // 只能干净关闭流，让客户端收到不完整但可识别的流结束。
+        reply.request.log.error({ err }, "SSE stream aborted by upstream error, closing stream");
+        reply.raw.end();
+        metric.done.value = true;
+        recordRequestDone({
+          latencyMs: Date.now() - metric.startTime,
+          status: upstream.statusCode,
+          inputTokens,
+          outputTokens,
+          stream: true,
+          provider: metric.provider,
+          model: externalModel
+        });
+        return;
+      }
+      // 尚未发送任何数据，重新抛出让上层 fallback 逻辑接管
+      throw err;
     }
 
     reply.raw.end();

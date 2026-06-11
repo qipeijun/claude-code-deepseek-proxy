@@ -32,7 +32,7 @@ errors.ts         ProxyError 类 + Anthropic 格式错误响应
 types.ts          Zod schema 定义 + TypeScript 类型导出
 defaultConfig.ts  内置默认配置 — 空 providers/routes，引导到 admin 页面配置
 admin.ts          Admin API — 方案 CRUD + 上游模型列表查询
-store.ts          配置持久化 — JSON 文件读写 + 写锁防并发覆盖
+store.ts          配置持久化 — SQLite（better-sqlite3）
 util.ts           工具函数 — isObject 等
 ```
 
@@ -41,9 +41,9 @@ util.ts           工具函数 — isObject 等
 ### 配置分层
 
 - **admin Web 页面**：主要配置入口，创建方案 → 设为当前 → 重启生效
-- **`config-store.json`**：持久化所有配置方案（JSON），通过 `CONFIG_STORE_PATH` 自定义路径
+- **`config-store.db`**：持久化所有配置方案（SQLite），通过 `CONFIG_STORE_PATH` 自定义路径
 - **`defaultConfig.ts`**：空提供者和路由，首次启动引导用户打开 admin 页面完成配置
-- Provider 的 `apiKey` 支持直接填写（存储在 config-store.json）或通过 `apiKeyEnv` 引用环境变量
+- Provider 的 `apiKey` 支持直接填写（存储在 config-store.db）或通过 `apiKeyEnv` 引用环境变量
 
 ### 路由匹配规则（`router.ts`）
 
@@ -92,12 +92,13 @@ util.ts           工具函数 — isObject 等
 
 - **配置方案（Profile）**：一组完整的服务器/Povider/路由配置，可创建多个方案
 - **一键切换**：激活不同方案后，重启服务即生效
-- **持久化存储**：所有方案保存在 `config-store.json`（已加入 `.gitignore`）
+- **持久化存储**：所有方案保存在 SQLite 数据库 `config-store.db`（已加入 `.gitignore`）
 - **无认证**：管理页面和 `/api/admin/*` API 不需要认证令牌
 
 启动优先级：
-1. 优先读取 `config-store.json` 中标记为 `active` 的方案
+1. 优先读取 SQLite 数据库中标记为 `active` 的方案
 2. 无活动方案时回退到内置默认配置（空路由，启动后引导 admin 页面配置）
+3. 首次启动时自动从旧 `config-store.json` 迁移数据（如有）
 
 ### Admin API
 
@@ -110,9 +111,18 @@ util.ts           工具函数 — isObject 等
 | `/api/admin/profiles/:id` | DELETE | 删除方案 |
 | `/api/admin/profiles/activate` | POST | 激活方案 `{id}` |
 
-### Store 模块（`src/store.ts`）
+### Store 模块（`src/config/store.ts`）
 
-JSON 文件持久化，零原生依赖。通过 `CONFIG_STORE_PATH` 环境变量可自定义存储路径。
+SQLite 持久化（better-sqlite3，WAL 模式 + 事务保护）。通过 `CONFIG_STORE_PATH` 环境变量可自定义存储路径。首次启动时自动从 `config-store.json` 迁移旧数据，迁移后原文件重命名为 `.bak` 备份。
+
+### 环境变量
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `CONFIG_STORE_PATH` | SQLite 数据库文件路径 | `./config-store.db` |
+| `CONFIG_STORE_MIGRATE_FROM` | 旧 JSON 配置文件路径（仅首次迁移时使用） | `./config-store.json` |
+| `LOCAL_PROXY_API_KEY` | 代理认证 Token | 无（不设置则跳过认证） |
+| `LOG_LEVEL` | 日志级别 | `debug` / `info`（生产） |
 
 ## 测试
 

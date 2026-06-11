@@ -70,7 +70,7 @@ export ANTHROPIC_BASE_URL="http://127.0.0.1:8787"
 export ANTHROPIC_API_KEY="你在 admin 中设置的鉴权密码"   # 未设鉴权则任意值
 ```
 
-> API Key、上游地址、路由规则均在 admin Web 页面配置，持久化于 `config-store.json`。若不希望 Key 落盘，可在 Provider 配置中将 Key 留空，改用 `apiKeyEnv` 字段引用环境变量。
+> API Key、上游地址、路由规则均在 admin Web 页面配置，持久化于 SQLite 数据库 `config-store.db`。若不希望 Key 落盘，可在 Provider 配置中将 Key 留空，改用 `apiKeyEnv` 字段引用环境变量。首次启动时自动从旧 `config-store.json` 迁移数据（如有）。
 
 ## 核心能力
 
@@ -133,7 +133,7 @@ src/
 │   ├── config.ts          Provider 解析（baseUrl / apiKey / apiKeyEnv）
 │   ├── defaultConfig.ts   内置默认配置（空路由，引导到 admin 页面）
 │   ├── liveConfig.ts      运行时配置管理 — 热重载 + 模块级可变引用
-│   └── store.ts           持久化存储 — JSON 文件读写 + 版本历史 + 写锁
+│   └── store.ts           持久化存储 — SQLite（better-sqlite3）WAL 模式 + 事务保护
 ├── proxy/
 │   ├── router.ts          模型路由 — exact > prefix > 最长前缀优先
 │   ├── http.ts            上游 HTTP — undici Agent 连接池 + AbortController 超时
@@ -201,7 +201,8 @@ Claude Code → 本代理 :8787 → New API :3000 → DeepSeek Anthropic
 |------|------|--------|
 | `NODE_ENV` | `production` 时输出 JSON 格式日志 | — |
 | `LOG_LEVEL` | 日志级别 | `info` |
-| `CONFIG_STORE_PATH` | 配置持久化文件路径 | `./config-store.json` |
+| `CONFIG_STORE_PATH` | SQLite 数据库文件路径 | `./config-store.db` |
+| `CONFIG_STORE_MIGRATE_FROM` | 旧 JSON 配置文件路径（仅首次 SQLite 迁移时使用） | `./config-store.json` |
 | `UPSTREAM_MAX_CONNECTIONS` | 上游连接池上限 | `32` |
 
 ## 开发指南

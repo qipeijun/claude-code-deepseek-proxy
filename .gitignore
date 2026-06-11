@@ -4,6 +4,11 @@ dist
 *.local
 config.yaml
 config-store.json
+config-store.db
+config-store.db-wal
+config-store.db-shm
+*.bak
+*.corrupted
 .DS_Store
 .idea
 coverage

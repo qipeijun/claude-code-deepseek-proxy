@@ -2,6 +2,7 @@ import { killProcessOnPort } from "./killPort.js";
 import { initConfig } from "./config/liveConfig.js";
 import { buildServer, printStartupBanner } from "./server.js";
 import { destroyAgents } from "./proxy/http.js";
+import { closeStore } from "./config/store.js";
 
 // 从持久化存储加载活动方案，没有则使用内置默认配置
 const config = await initConfig();
@@ -40,10 +41,12 @@ const shutdown = (signal: string) => {
 
   app.close().then(() => {
     clearTimeout(forceTimer);
+    closeStore();
     destroyAgents();
     process.exit(0);
   }).catch(() => {
     clearTimeout(forceTimer);
+    closeStore();
     destroyAgents();
     process.exit(0);
   });

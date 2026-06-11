@@ -18,7 +18,16 @@ export async function reloadConfig(): Promise<AppConfig> {
   return currentConfig;
 }
 
-/** 启动时首次加载配置 */
+/** 启动时首次加载配置。数据库异常时降级到默认空配置，确保服务至少能启动。 */
 export async function initConfig(): Promise<AppConfig> {
-  return reloadConfig();
+  try {
+    return await reloadConfig();
+  } catch (err) {
+    console.error(
+      "[config] 无法从存储加载配置，将使用内置默认空配置:",
+      err instanceof Error ? err.message : String(err),
+    );
+    currentConfig = defaultConfig;
+    return defaultConfig;
+  }
 }

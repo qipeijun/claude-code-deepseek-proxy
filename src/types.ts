@@ -63,7 +63,7 @@ export const appConfigSchema = z.object({
     })
     .default({ host: "127.0.0.1", port: 8787 }),
   providers: z.record(providerSchema),
-  routes: z.array(routeSchema).min(1)
+  routes: z.array(routeSchema)
 });
 
 export type ProviderConfig = z.infer<typeof providerSchema>;

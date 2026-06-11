@@ -358,6 +358,13 @@ a{color:var(--accent);text-decoration:none}
 }
 .config-main-body{flex:1;padding:24px 28px 80px;max-width:700px;margin:0 auto;width:100%}
 
+/* ── 方案名称卡片（独立于步骤，始终可见）── */
+#nameCard{
+  border-left: 2px solid var(--accent);
+  margin-bottom: 28px;
+}
+#nameCard .field{margin-bottom:0}
+
 /* Steps */
 .steps{display:flex;align-items:center;margin-bottom:32px}
 .step{

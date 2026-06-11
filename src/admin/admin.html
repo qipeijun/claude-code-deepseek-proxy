@@ -152,7 +152,7 @@
           <div id="editor" class="hidden" style="display:flex;flex-direction:column;flex:1">
             <div class="config-main-header">
               <div style="display:flex;align-items:center;gap:14px">
-                <input id="profileName" style="font-size:16px;font-weight:700;border:0;outline:0;background:transparent;width:auto;min-width:120px;color:var(--text-primary);font-family:var(--font-mono)" placeholder="方案名称" oninput="window.__markDirty()">
+                <span id="profileNameDisplay" style="font-size:14px;font-weight:700;color:var(--text-primary);font-family:var(--font-mono)">—</span>
                 <span id="savedAt" style="font-size:10px;color:var(--text-tertiary);font-family:var(--font-mono)"></span>
               </div>
               <div style="display:flex;gap:6px">
@@ -164,6 +164,15 @@
             <div class="config-main-body">
               <div id="modelDatalists"></div>
               <div class="err-box hidden" id="errorBox"></div>
+
+              <!-- 方案名称 -->
+              <div class="fcard" id="nameCard">
+                <div class="fcard-header"><h2 class="fcard-title">方案名称</h2></div>
+                <div class="field">
+                  <input id="profileName" placeholder="例如：生产环境、开发测试…" oninput="window.__markDirty()" spellcheck="false">
+                  <span class="sub">给这套配置方案起一个容易识别的名字</span>
+                </div>
+              </div>
 
               <div class="steps" id="stepBar">
                 <div class="step active" data-step="1"><span class="num">1</span>上游连接</div>

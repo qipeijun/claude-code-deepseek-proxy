@@ -27,8 +27,11 @@ export const PROVIDER_TEMPLATES = {
 
 /** 通用 fetch 封装 */
 export async function api(method, url, body) {
-  const o = { method, headers: { 'Content-Type': 'application/json' } };
-  if (body !== undefined) o.body = JSON.stringify(body);
+  const o = { method };
+  if (body !== undefined) {
+    o.headers = { 'Content-Type': 'application/json' };
+    o.body = JSON.stringify(body);
+  }
   const r = await fetch(url, o);
   const d = await r.json().catch(() => ({}));
   if (!r.ok || d.ok === false) throw new Error(d.error || 'HTTP ' + r.status);

@@ -60,7 +60,9 @@ export async function selectProfile(id) {
   showEditor(); renderSidebar();
 
   const profileName = document.getElementById('profileName');
+  const profileNameDisplay = document.getElementById('profileNameDisplay');
   if (profileName) profileName.value = p.name;
+  if (profileNameDisplay) profileNameDisplay.textContent = p.name;
 
   const savedAt = document.getElementById('savedAt');
   if (savedAt) savedAt.textContent = '更新于 ' + new Date(p.updatedAt).toLocaleString('zh-CN');
@@ -351,9 +353,10 @@ async function doFetchModels(name, provider, previewEl) {
     _renderModelDatalistsInternal();
     _updateRouteListsInternal();
 
+    const cnt = modelsByProvider[name].length;
+
     if (previewEl) {
       previewEl.classList.remove('hidden');
-      const cnt = modelsByProvider[name].length;
       previewEl.innerHTML = modelsByProvider[name].slice(0, 15).map(esc).join(' · ') + (cnt > 15 ? ' · …' : '');
       const pvModelCount = document.getElementById('pvModelCount');
       if (pvModelCount) pvModelCount.textContent = cnt ? cnt + ' 个模型可用' : '';
@@ -588,6 +591,8 @@ export async function doSave() {
     if (saveBtn) saveBtn.textContent = '保存';
     const savedAt = document.getElementById('savedAt');
     if (savedAt) savedAt.textContent = '保存于 ' + new Date().toLocaleString('zh-CN') + '，已生效';
+    const profileNameDisplay = document.getElementById('profileNameDisplay');
+    if (profileNameDisplay) profileNameDisplay.textContent = name;
     await _loadProfiles();
     store.set('currentId', r.profile.id);
     renderSidebar();
@@ -614,6 +619,8 @@ export async function doActivate() {
     if (saveBtn) saveBtn.textContent = '保存';
     const savedAt = document.getElementById('savedAt');
     if (savedAt) savedAt.textContent = '已设为当前并保存于 ' + new Date().toLocaleString('zh-CN') + '，已生效';
+    const profileNameDisplay = document.getElementById('profileNameDisplay');
+    if (profileNameDisplay) profileNameDisplay.textContent = name;
     await _loadProfiles();
     renderSidebar();
     toast('已设为当前方案并生效', 'ok');

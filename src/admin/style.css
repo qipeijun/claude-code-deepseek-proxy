@@ -94,16 +94,13 @@ a{color:var(--accent);text-decoration:none}
 }
 .gh-link:hover{color:var(--accent)}
 .gh-icon{
-  width:20px;height:20px;
-  display:grid;place-items:center;
-  font-size:14px;font-weight:700;
+  width:16px;height:16px;
   color:var(--text-tertiary);
-  border:1px solid var(--border);
-  transition:all var(--transition);
+  transition:color var(--transition);
+  flex-shrink:0;
 }
 .gh-link:hover .gh-icon{
   color:var(--accent);
-  border-color:rgba(0,230,118,0.3);
 }
 .server-name{font-size:12px;color:var(--text-tertiary);font-family:var(--font-mono)}
 .port-badge{

@@ -22,9 +22,9 @@ async function pollMetrics() {
     const r = await fetch('/api/admin/metrics').then(r => r.json());
     setText('mTotal', r.total != null ? r.total : '-');
     setText('mActive', r.active != null ? r.active : '-');
-    setText('mAvgLatency', r.avgLatencyMs != null ? r.avgLatencyMs + 'ms' : '-');
-    setText('mP95', r.p95LatencyMs != null ? r.p95LatencyMs + 'ms' : '-');
-    setText('mP99', r.p99LatencyMs != null ? r.p99LatencyMs + 'ms' : '-');
+    setText('mAvgLatency', r.avgLatencyMs != null ? (r.avgLatencyMs / 1000).toFixed(2) + 's' : '-');
+    setText('mP95', r.p95LatencyMs != null ? (r.p95LatencyMs / 1000).toFixed(2) + 's' : '-');
+    setText('mP99', r.p99LatencyMs != null ? (r.p99LatencyMs / 1000).toFixed(2) + 's' : '-');
     setText('mRPS', r.requestsPerSec != null ? r.requestsPerSec.toFixed(1) + '/s' : '-');
     setText('mTPS', r.tokensPerSec != null
       ? (r.tokensPerSec >= 1000 ? (r.tokensPerSec / 1000).toFixed(1) + 'k/s' : r.tokensPerSec + '/s')

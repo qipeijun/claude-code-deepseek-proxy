@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <title>DeepSeek Proxy — Terminal Node</title>
+
+  <defs>
+    <!-- Glow filter for the mark -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="2.5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Subtle inner shadow for depth -->
+    <filter id="innerDepth" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur stdDeviation="1" result="blur"/>
+      <feComposite in2="SourceAlpha" operator="arithmetic" k2="-1" k3="1" result="shadow"/>
+      <feFlood flood-color="#000000" flood-opacity="0.3"/>
+      <feComposite in2="shadow" operator="in"/>
+      <feComposite in2="SourceGraphic" operator="over"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" fill="#08080c"/>
+
+  <!-- Faint structural grid -->
+  <g opacity="0.03" stroke="#00e676">
+    <line x1="0" y1="128" x2="512" y2="128" stroke-width="0.5"/>
+    <line x1="0" y1="256" x2="512" y2="256" stroke-width="0.5"/>
+    <line x1="0" y1="384" x2="512" y2="384" stroke-width="0.5"/>
+    <line x1="128" y1="0" x2="128" y2="512" stroke-width="0.5"/>
+    <line x1="256" y1="0" x2="256" y2="512" stroke-width="0.5"/>
+    <line x1="384" y1="0" x2="384" y2="512" stroke-width="0.5"/>
+  </g>
+
+  <!-- Lambda: LEFT STROKE — top-left anchor to bottom junction -->
+  <line
+    x1="122" y1="105"
+    x2="252" y2="350"
+    stroke="#00e676"
+    stroke-width="48"
+    stroke-linecap="square"
+    filter="url(#glow)"
+  />
+
+  <!-- Lambda: RIGHT STROKE — top-right anchor to bottom junction -->
+  <line
+    x1="390" y1="68"
+    x2="252" y2="350"
+    stroke="#00e676"
+    stroke-width="48"
+    stroke-linecap="square"
+    filter="url(#glow)"
+  />
+
+  <!-- Junction accent: routing node indicator (left channel) -->
+  <rect x="170" y="224" width="40" height="8" fill="#00e676" opacity="0.35"/>
+
+  <!-- Junction accent: routing node indicator (right channel) -->
+  <rect x="295" y="206" width="40" height="8" fill="#00e676" opacity="0.25"/>
+</svg>

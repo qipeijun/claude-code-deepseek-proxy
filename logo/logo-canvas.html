@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Terminal Node — Logo</title>
+<style>
+  @font-face {
+    font-family: 'JetBrains Mono';
+    src: url('./canvas-fonts/JetBrainsMono-Regular.ttf') format('truetype');
+    font-weight: 400;
+  }
+  @font-face {
+    font-family: 'JetBrains Mono';
+    src: url('./canvas-fonts/JetBrainsMono-Bold.ttf') format('truetype');
+    font-weight: 700;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #08080c;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  .canvas-wrapper {
+    position: relative;
+    width: 1200px;
+    height: 1200px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background:
+      linear-gradient(rgba(0,230,118,0.012) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,230,118,0.012) 1px, transparent 1px);
+    background-size: 30px 30px;
+  }
+
+  /* Central mark container */
+  .mark-container {
+    position: relative;
+    width: 600px;
+    height: 600px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  /* The lambda SVG */
+  .lambda-mark {
+    width: 480px;
+    height: 480px;
+    filter: drop-shadow(0 0 40px rgba(0,230,118,0.08));
+  }
+
+  /* Coordinate annotations */
+  .annotation {
+    position: absolute;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: rgba(104,104,120,0.4);
+    letter-spacing: 0.5px;
+    pointer-events: none;
+  }
+
+  .anno-top-left  { top: 50px;  left: 50px; }
+  .anno-top-right { top: 42px;  right: 55px; }
+  .anno-bottom    { bottom: 28px; left: 50%; transform: translateX(-50%); }
+
+  /* Label */
+  .label-group {
+    position: absolute;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .label-line {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    color: rgba(0,230,118,0.5);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+  }
+
+  .label-sub {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    color: rgba(104,104,120,0.25);
+    letter-spacing: 4px;
+  }
+
+  /* Corner brackets */
+  .corner {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border-color: rgba(0,230,118,0.08);
+    border-style: solid;
+    pointer-events: none;
+  }
+  .corner-tl { top: 30px; left: 30px; border-width: 1px 0 0 1px; }
+  .corner-tr { top: 30px; right: 30px; border-width: 1px 1px 0 0; }
+  .corner-bl { bottom: 30px; left: 30px; border-width: 0 0 1px 1px; }
+  .corner-br { bottom: 30px; right: 30px; border-width: 0 1px 1px 0; }
+</style>
+</head>
+<body>
+<div class="canvas-wrapper">
+
+  <div class="mark-container">
+    <!-- Corner brackets suggesting a terminal window -->
+    <div class="corner corner-tl"></div>
+    <div class="corner corner-tr"></div>
+    <div class="corner corner-bl"></div>
+    <div class="corner corner-br"></div>
+
+    <!-- Annotations -->
+    <span class="annotation anno-top-left">NODE 00:01</span>
+    <span class="annotation anno-top-right">SIG. 0x3BB</span>
+    <span class="annotation anno-bottom">TERMINAL / ROUTE / PROXY</span>
+
+    <!-- The Lambda Mark -->
+    <svg class="lambda-mark" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <!-- Subtle glow filter -->
+        <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="3" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
+
+      <!-- Background grid (faint) -->
+      <g opacity="0.04">
+        <line x1="0" y1="128" x2="512" y2="128" stroke="#00e676" stroke-width="0.5"/>
+        <line x1="0" y1="256" x2="512" y2="256" stroke="#00e676" stroke-width="0.5"/>
+        <line x1="0" y1="384" x2="512" y2="384" stroke="#00e676" stroke-width="0.5"/>
+        <line x1="128" y1="0" x2="128" y2="512" stroke="#00e676" stroke-width="0.5"/>
+        <line x1="256" y1="0" x2="256" y2="512" stroke="#00e676" stroke-width="0.5"/>
+        <line x1="384" y1="0" x2="384" y2="512" stroke="#00e676" stroke-width="0.5"/>
+      </g>
+
+      <!-- Center registration mark -->
+      <circle cx="252" cy="350" r="3" fill="rgba(0,230,118,0.15)"/>
+
+      <!-- LEFT STROKE of lambda -->
+      <!-- From top-left anchor to bottom junction -->
+      <line
+        x1="122" y1="105"
+        x2="252" y2="350"
+        stroke="#00e676"
+        stroke-width="48"
+        stroke-linecap="square"
+        filter="url(#glow)"
+      />
+
+      <!-- RIGHT STROKE of lambda -->
+      <!-- From top-right anchor to bottom junction -->
+      <line
+        x1="390" y1="68"
+        x2="252" y2="350"
+        stroke="#00e676"
+        stroke-width="48"
+        stroke-linecap="square"
+        filter="url(#glow)"
+      />
+
+      <!-- Routing node accent: small horizontal dash suggesting data flow -->
+      <line
+        x1="170" y1="228"
+        x2="210" y2="228"
+        stroke="#00e676"
+        stroke-width="8"
+        stroke-linecap="square"
+        opacity="0.35"
+      />
+
+      <!-- Secondary routing accent -->
+      <line
+        x1="295" y1="210"
+        x2="335" y2="210"
+        stroke="#00e676"
+        stroke-width="8"
+        stroke-linecap="square"
+        opacity="0.25"
+      />
+    </svg>
+
+    <!-- Label -->
+    <div class="label-group">
+      <span class="label-line">DeepSeek Proxy</span>
+      <span class="label-sub">TERMINAL NODE v2</span>
+    </div>
+  </div>
+</div>
+</body>
+</html>

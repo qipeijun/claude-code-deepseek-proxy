@@ -17,6 +17,10 @@ interface StaticFile {
 
 // URL 路径 → { 磁盘相对路径, Content-Type }
 const STATIC_FILES: Record<string, StaticFile> = {
+  "/admin/logo.svg": {
+    path: join(adminDir, "logo.svg"),
+    contentType: "image/svg+xml"
+  },
   "/admin/style.css": {
     path: join(adminDir, "style.css"),
     contentType: "text/css; charset=utf-8"

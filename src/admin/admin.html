@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Claude Code DeepSeek Proxy — 管理后台</title>
+<link rel="icon" type="image/svg+xml" href="/admin/logo.svg">
 <link rel="stylesheet" href="/admin/style.css">
 </head>
 <body>
@@ -13,7 +14,7 @@
   <nav class="topbar">
     <div class="topbar-left">
       <div class="logo">
-        <div class="logo-mark">λ</div>
+        <img class="logo-mark" src="/admin/logo.svg" alt="DeepSeek Proxy" width="24" height="24">
         DeepSeek Proxy
       </div>
       <div class="tabs">
@@ -22,6 +23,10 @@
       </div>
     </div>
     <div class="topbar-right">
+      <a class="gh-link" href="https://github.com/qipeijun/claude-code-deepseek-proxy" target="_blank" rel="noopener" title="GitHub 项目主页">
+        <span class="gh-icon">#</span>
+        <span class="gh-label">GitHub</span>
+      </a>
       <span class="server-name" id="topServerAddr">127.0.0.1:8787</span>
       <span class="port-badge"><span class="live-dot"></span>ACTIVE</span>
       <button class="btn ghost sm" id="restartBtn" title="强制释放端口并重启 (watch 模式生效)">重启</button>

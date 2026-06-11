@@ -68,10 +68,7 @@ a{color:var(--accent);text-decoration:none}
   color:var(--accent);user-select:none;font-family:var(--font-mono);
 }
 .logo-mark{
-  width:24px;height:24px;border-radius:0;
-  background:var(--accent);
-  display:grid;place-items:center;
-  font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--bg-root);
+  width:24px;height:24px;display:block;border-radius:0;
 }
 .tabs{display:flex;gap:0;border:1px solid var(--border)}
 .tab-btn{
@@ -87,6 +84,27 @@ a{color:var(--accent);text-decoration:none}
   font-weight:700;
 }
 .topbar-right{display:flex;align-items:center;gap:16px}
+.gh-link{
+  display:flex;align-items:center;gap:6px;
+  font-family:var(--font-mono);font-size:11px;font-weight:600;
+  color:var(--text-tertiary);
+  text-decoration:none;
+  transition:color var(--transition);
+  letter-spacing:-0.1px;
+}
+.gh-link:hover{color:var(--accent)}
+.gh-icon{
+  width:20px;height:20px;
+  display:grid;place-items:center;
+  font-size:14px;font-weight:700;
+  color:var(--text-tertiary);
+  border:1px solid var(--border);
+  transition:all var(--transition);
+}
+.gh-link:hover .gh-icon{
+  color:var(--accent);
+  border-color:rgba(0,230,118,0.3);
+}
 .server-name{font-size:12px;color:var(--text-tertiary);font-family:var(--font-mono)}
 .port-badge{
   display:flex;align-items:center;gap:7px;

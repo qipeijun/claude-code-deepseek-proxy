@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <title>DeepSeek Proxy — Icon</title>
+
+  <!-- Solid dark background for favicon legibility -->
+  <rect width="64" height="64" fill="#08080c"/>
+
+  <!-- Lambda: LEFT STROKE -->
+  <line x1="14" y1="10" x2="31" y2="44" stroke="#00e676" stroke-width="7" stroke-linecap="square"/>
+
+  <!-- Lambda: RIGHT STROKE -->
+  <line x1="50" y1="6" x2="31" y2="44" stroke="#00e676" stroke-width="7" stroke-linecap="square"/>
+
+  <!-- Routing accents (minimal at this scale) -->
+  <rect x="20" y="26" width="6" height="1" fill="#00e676" opacity="0.4"/>
+  <rect x="36" y="23" width="6" height="1" fill="#00e676" opacity="0.3"/>
+</svg>

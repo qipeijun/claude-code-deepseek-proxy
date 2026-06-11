@@ -1,11 +1,15 @@
 <p align="center">
+  <img src="https://raw.githubusercontent.com/qipeijun/claude-code-deepseek-proxy/main/logo/deepseek-proxy-logo.svg" alt="DeepSeek Proxy Logo" width="96" height="96">
+</p>
+
+<h1 align="center">Claude Code DeepSeek Proxy</h1>
+
+<p align="center">
   <img src="https://img.shields.io/badge/Node.js-≥22-00e676?style=flat&logo=nodedotjs&logoColor=white" alt="Node.js">
   <img src="https://img.shields.io/badge/License-MIT-00e676?style=flat" alt="License">
   <img src="https://img.shields.io/badge/TypeScript-5.x-3178c6?style=flat&logo=typescript&logoColor=white" alt="TypeScript">
   <img src="https://img.shields.io/badge/Fastify-5.x-000000?style=flat&logo=fastify&logoColor=white" alt="Fastify">
 </p>
-
-<h1 align="center">Claude Code DeepSeek Proxy</h1>
 
 <p align="center">
 一个 Anthropic 协议兼容的本地中转代理，使 DeepSeek 完整驱动 Claude Code 的<br>
